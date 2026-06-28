@@ -21,6 +21,9 @@ export class EquilibriumCollectible extends BaseCollectible {
       BLUE: 0,
     };
 
+    // Counts the colors surrounding the collectible in a 3x3 area, starting from the upper-left corner.
+    // dx represents the starting x search position relative to the center.
+    // dy represents the starting y position relative to the center.
     for (let dx = -1; dx <= 1; dx++) {
       for (let dy = -1; dy <= 1; dy++) {
         const cellKey = `${x + dx},${y + dy}`;

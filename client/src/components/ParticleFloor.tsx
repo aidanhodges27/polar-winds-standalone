@@ -1,7 +1,7 @@
 import { useRef, useMemo, useLayoutEffect, useState, useEffect } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
-import { getFloorTint, getPlayerHex } from "@/constants/playerColors";
+import { getFloorTint, type PlayerColorLower } from "@/constants/playerColors";
 
 interface ParticleFloorProps {
     gridWidth?: number;
@@ -48,10 +48,13 @@ export function ParticleFloor({ gridWidth = 10, gridHeight = 8, spacing = 2.5, n
     // 2. Colors array
     const colorArray = useMemo(() => {
         const array = new Float32Array(totalNodes * 3);
-        const colorMap = {
-            red: new THREE.Color(getPlayerHex("RED")),
-            blue: new THREE.Color(getPlayerHex("BLUE")),
+        const colorMap: Record<PlayerColorLower | "gray", THREE.Color> = {
+            red: new THREE.Color(getFloorTint("RED")),
             green: new THREE.Color(getFloorTint("GREEN")),
+            blue: new THREE.Color(getFloorTint("BLUE")),
+            yellow: new THREE.Color(getFloorTint("YELLOW")),
+            purple: new THREE.Color(getFloorTint("PURPLE")),
+            cyan: new THREE.Color(getFloorTint("CYAN")),
             gray: new THREE.Color("#888888"), // Neutral (tutorial)
         };
         const defaultColor = new THREE.Color("#333333");

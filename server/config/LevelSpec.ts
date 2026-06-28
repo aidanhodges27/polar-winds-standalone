@@ -50,10 +50,14 @@ export interface LevelSpec {
  * Parse an Unreal export format into our LevelSpec format
  */
 export function parseUnrealExport(data: any): LevelSpec {
+  // Unreal stores colors as numbers, so this translates those numbers into our string IDs.
   const colorMap: Record<number, CollectibleColor> = {
     0: "RED",
     1: "GREEN",
-    2: "BLUE"
+    2: "BLUE",
+    3: "YELLOW",
+    4: "PURPLE",
+    5: "CYAN"
   };
 
   const clueTypeAliases: Record<string, CollectibleType> = {

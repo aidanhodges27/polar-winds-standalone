@@ -1,6 +1,10 @@
 import { Schema, type, MapSchema, ArraySchema } from "@colyseus/schema";
 
-export type PlayerColor = "RED" | "GREEN" | "BLUE";
+// `as const` keeps these as exact string values, not just a generic `string[]`.
+// That lets TypeScript build a safe union type from this single source of truth.
+export const PLAYER_COLORS = ["RED", "GREEN", "BLUE", "YELLOW", "PURPLE", "CYAN"] as const;
+// This becomes: "RED" | "GREEN" | "BLUE" | "YELLOW" | "PURPLE" | "CYAN".
+export type PlayerColor = typeof PLAYER_COLORS[number];
 
 export class Player extends Schema {
   @type("number") x: number = 0;

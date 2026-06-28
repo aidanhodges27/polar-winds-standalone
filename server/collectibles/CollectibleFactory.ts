@@ -9,7 +9,9 @@ import { GalaxyCollectible } from "./GalaxyCollectible";
 import { PolyominoCollectible } from "./PolyominoCollectible";
 
 export class CollectibleFactory {
-  private static handlers: Map<CollectibleType, BaseCollectible> = new Map([
+  // The generic arguments tell TypeScript every key is a CollectibleType and every value is a BaseCollectible.
+  // Without them, TypeScript may incorrectly infer the value type from only the first handler in the array.
+  private static handlers: Map<CollectibleType, BaseCollectible> = new Map<CollectibleType, BaseCollectible>([
     ["network", new NetworkCollectible()],
     ["box", new BoxCollectible()],
     ["equilibrium", new EquilibriumCollectible()],

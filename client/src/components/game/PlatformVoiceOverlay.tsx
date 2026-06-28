@@ -2,10 +2,21 @@ import { Mic, MicOff } from "lucide-react";
 import { Room } from "livekit-client";
 import type { ParticipantAudioState } from "@/hooks/usePlatformVoice";
 import { cn } from "@/lib/utils";
-import { getPlayerUiLabelHex, type PlayerColorId } from "@/constants/playerColors";
+import { getPlayerUiLabelHex, PLAYER_COLOR_IDS, type PlayerColorId } from "@/constants/playerColors";
 import { AudioRenderer } from "./AudioRenderer";
 
-const COLOR_ORDER: PlayerColorId[] = ["RED", "GREEN", "BLUE"];
+/**
+ * #TODO
+ * THIS CODE HAS NOT BEEN TESTED YET
+ * 
+ * With the additional of colors the overlay needed to be
+ * updated to include yellow, purple, and cyan. If you want
+ * to test it, install LiveKit and delete this comment
+ * if all goes well.
+ */
+
+// Reuse the same color order as the rest of the UI when sorting voice participants.
+const COLOR_ORDER: readonly PlayerColorId[] = PLAYER_COLOR_IDS;
 
 interface PlatformVoiceOverlayProps {
   participants: Map<string, ParticipantAudioState>;

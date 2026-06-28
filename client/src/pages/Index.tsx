@@ -11,6 +11,7 @@ import { PlatformVoiceOverlay } from "@/components/game/PlatformVoiceOverlay";
 import { ResultsOverlay } from "@/components/game/ResultsOverlay";
 import { MilestoneShowcase } from "@/components/game/MilestoneShowcase";
 import { symbolKeyFromName, milestoneAssets, type MilestoneSymbol } from "@/lib/svg3d/assets";
+import type { PlayerColorId } from "@/constants/playerColors";
 
 /** Build a redirect URL back to the platform with query params */
 function buildReturnUrl(returnUrl: string, params: Record<string, string | number>): string {
@@ -22,8 +23,8 @@ function buildReturnUrl(returnUrl: string, params: Record<string, string | numbe
 }
 
 // Types
-type PlayerColor = "RED" | "GREEN" | "BLUE";
-type CollectibleType = "network" | "box" | "equilibrium" | "clone" | "vantage";
+type PlayerColor = PlayerColorId;
+type CollectibleType = "network" | "box" | "equilibrium" | "clone" | "vantage" | "galaxy" | "polyomino";
 
 interface UnlockedMilestone {
   type: string;
@@ -106,6 +107,26 @@ interface GameStateLocal {
 
 type GameAction = { type: "SYNC_STATE"; payload: GameStateLocal };
 
+// Build a score object with one key for every playable color.
+const createEmptyScores = (): Record<PlayerColor, number> => ({
+  RED: 0,
+  GREEN: 0,
+  BLUE: 0,
+  YELLOW: 0,
+  PURPLE: 0,
+  CYAN: 0,
+});
+
+// Build the same kind of per-color object for milestone unlock lists.
+const createEmptyMilestones = (): Record<PlayerColor, UnlockedMilestone[]> => ({
+  RED: [],
+  GREEN: [],
+  BLUE: [],
+  YELLOW: [],
+  PURPLE: [],
+  CYAN: [],
+});
+
 const initialGameState: GameStateLocal = {
   gridWidth: 10,
   gridHeight: 8,
@@ -113,7 +134,7 @@ const initialGameState: GameStateLocal = {
   gridColors: new Map(),
   collectibles: [],
   enemies: [],
-  scores: { RED: 0, GREEN: 0, BLUE: 0 },
+  scores: createEmptyScores(),
   totalScore: 0,
   highScore: 0,
   gameStarted: false,
@@ -178,11 +199,7 @@ const Index = () => {
   const resultsReasonRef = useRef<"gameover" | "abandoned">("gameover");
   // Accumulates new milestones as the server broadcasts them during the game.
   // Keyed by player color → list of unlocks with card text from game_milestones.
-  const [unlockedDuringGame, setUnlockedDuringGame] = useState<Record<PlayerColor, UnlockedMilestone[]>>({
-    RED: [],
-    GREEN: [],
-    BLUE: [],
-  });
+  const [unlockedDuringGame, setUnlockedDuringGame] = useState<Record<PlayerColor, UnlockedMilestone[]>>(createEmptyMilestones);
   const [showMilestoneModal, setShowMilestoneModal] = useState(false);
   const bgMusicRef = useRef<HTMLAudioElement | null>(null);
   const [bgMusicVolume, setBgMusicVolume] = useState(0.3);
@@ -290,10 +307,14 @@ const Index = () => {
         gridColors: newGridColors,
         collectibles: newCollectibles,
         enemies: newEnemies,
+        // Convert the server's Map into a plain object keyed by every playable color.
         scores: {
           RED: gameRoom.state.scores?.get("RED") || 0,
           GREEN: gameRoom.state.scores?.get("GREEN") || 0,
           BLUE: gameRoom.state.scores?.get("BLUE") || 0,
+          YELLOW: gameRoom.state.scores?.get("YELLOW") || 0,
+          PURPLE: gameRoom.state.scores?.get("PURPLE") || 0,
+          CYAN: gameRoom.state.scores?.get("CYAN") || 0,
         },
         highScore: gameRoom.state.highScore || 0,
         countdown: gameRoom.state.countdown ?? 0,

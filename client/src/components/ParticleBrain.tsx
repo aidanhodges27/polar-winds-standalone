@@ -1,10 +1,10 @@
 import { useRef, useMemo } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
-import { getParticleShades, toUpperId } from "@/constants/playerColors";
+import { getParticleShades, toUpperId, type PlayerColorLower } from "@/constants/playerColors";
 
 type ParticleBrainProps = {
-    color?: "blue" | "green" | "red";
+    color?: PlayerColorLower;
     isCollected?: boolean;
     onComplete?: () => void;
 };

@@ -3,8 +3,8 @@ import * as THREE from 'three';
 import { getPlayerHex } from "@/constants/playerColors";
 import { ThickEdges } from './OutlineMaterial';
 
-// Polyomino shape definitions matching the server
-// Each shape is an array of [x, y] offsets
+// Polyomino shape definitions matching the server.
+// Each shape is an array of [x, y] offsets for the small cubes that draw the clue.
 type PolyominoShape = Array<[number, number]>;
 
 const POLYOMINO_SHAPES: Record<string, PolyominoShape> = {
@@ -33,6 +33,30 @@ const POLYOMINO_SHAPES: Record<string, PolyominoShape> = {
     [1, 0], [2, 0],
     [0, 1], [1, 1], [2, 1],
     [0, 2], [1, 2]
+  ],
+
+  // YELLOW: Plus pattern (5 cells)
+  YELLOW: [
+    [1, 0],
+    [0, 1], [1, 1], [2, 1],
+    [1, 2]
+  ],
+
+  // PURPLE: T-shaped pattern (7 cells)
+  PURPLE: [
+    [0, 0], [1, 0], [2, 0],
+    [1, 1],
+    [1, 2],
+    [1, 3],
+    [1, 4]
+  ],
+
+  // CYAN: Zigzag pattern (7 cells)
+  CYAN: [
+    [0, 0], [1, 0],
+    [1, 1], [2, 1],
+    [2, 2], [3, 2],
+    [3, 3]
   ]
 };
 

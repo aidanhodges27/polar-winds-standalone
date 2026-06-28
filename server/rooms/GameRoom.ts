@@ -1,5 +1,5 @@
 import { Room, Client } from "colyseus";
-import { GameState, Player, Collectible, GridCell, PlayerColor, CollectibleType, CollectibleColor, CollectibleOrientation, Enemy, EnemyPersonality } from "../schema/GameState";
+import { GameState, Player, Collectible, GridCell, PlayerColor, PLAYER_COLORS, CollectibleType, CollectibleColor, CollectibleOrientation, Enemy, EnemyPersonality } from "../schema/GameState";
 import { CollectibleFactory } from "../collectibles";
 import { CollectibleSpawnConfig, COLLECTIBLE_PROPERTIES } from "../config/CollectibleSpawnConfig";
 import { LevelSpec, parseUnrealExport } from "../config/LevelSpec";
@@ -31,7 +31,7 @@ class SeededRNG {
 interface MoveMessage {
   direction: "up" | "down" | "left" | "right";
   seq?: number;
-  targetColor?: "RED" | "GREEN" | "BLUE";
+  targetColor?: PlayerColor;
 }
 
 interface PingMessage {
@@ -52,7 +52,17 @@ interface ClearBoardVote {
 
 export class GameRoom extends Room<GameState> {
   maxClients = 10;
-  private playerColors: PlayerColor[] = ["RED", "GREEN", "BLUE"];
+  // Copy the readonly schema color list into a mutable array for room logic.
+  private playerColors: PlayerColor[] = [...PLAYER_COLORS];
+  // `Record<PlayerColor, ...>` forces every allowed player color to have a start position.
+  private readonly playerStartPositions: Record<PlayerColor, { x: number; y: number }> = {
+    RED: { x: 10, y: 14 },
+    GREEN: { x: 12, y: 14 },
+    BLUE: { x: 14, y: 14 },
+    YELLOW: { x: 10, y: 12 },
+    PURPLE: { x: 12, y: 12 },
+    CYAN: { x: 14, y: 12 },
+  };
   private assignedColors = new Set<PlayerColor>();
   private stageThresholds: number[];
   private readonly MAX_GRID_SIZE = 26; // Full grid size (stage 8)
@@ -62,7 +72,7 @@ export class GameRoom extends Room<GameState> {
   private enemyRng: SeededRNG;  // enemy spawning & movement only
   private collectibleSpawnConfig: CollectibleSpawnConfig;
   private userIds: Map<string, string> = new Map(); // sessionId -> userId
-  private userIdToColor: Map<string, "RED" | "GREEN" | "BLUE"> = new Map(); // userId -> color for reconnection
+  private userIdToColor: Map<string, PlayerColor> = new Map(); // userId -> color for reconnection
   private spectatorSessionIds = new Set<string>();
   private polarWindsSessionId: string | null = null;
   private gameTimer: ReturnType<typeof setInterval> | null = null;
@@ -91,6 +101,16 @@ export class GameRoom extends Room<GameState> {
   private milestoneReportedTypes = new Set<string>();
   private pendingMilestoneRequests: Promise<void>[] = [];
   private countdownTimer: ReturnType<typeof setInterval> | null = null;
+
+  // Centralizing this lookup keeps reconnect, normal join, and solo-mode setup in sync.
+  private getPlayerStartPosition(color: PlayerColor): { x: number; y: number } {
+    return this.playerStartPositions[color];
+  }
+
+  // Spectators can be connected to the room, but they should not count as voters.
+  private getActivePlayerSessionIds(): string[] {
+    return [...this.state.players.keys()].filter(id => !this.spectatorSessionIds.has(id));
+  }
 
   onCreate(options: any) {
     console.log("GameRoom created with options:", options, "| Room ID:", this.roomId);
@@ -213,10 +233,10 @@ export class GameRoom extends Room<GameState> {
     // Set stage thresholds from config
     this.state.stageThresholds.push(...this.stageThresholds);
 
-    // Initialize scores
-    this.state.scores.set("RED", 0);
-    this.state.scores.set("GREEN", 0);
-    this.state.scores.set("BLUE", 0);
+    // Initialize one score entry per color so newly-added colors start at 0 too.
+    for (const color of this.playerColors) {
+      this.state.scores.set(color, 0);
+    }
 
     console.log("Initial state set, scores initialized");
 
@@ -228,7 +248,7 @@ export class GameRoom extends Room<GameState> {
       let player: Player | undefined;
       let playerKey: string | undefined;
 
-      if (this.isSoloMode && this.isPlatformManaged && message.targetColor) {
+      if (this.isSoloMode && message.targetColor) {
         // Find the player with the requested color
         this.state.players.forEach((p, key) => {
           if (p.color === message.targetColor) {
@@ -409,15 +429,19 @@ export class GameRoom extends Room<GameState> {
         });
       }
 
+      // The required vote count changes with room size, so derive it from live players.
+      const activePlayers = this.getActivePlayerSessionIds();
+      const requiredVotes = activePlayers.length;
+
       // Broadcast updated vote count to all players
       this.broadcast("clearBoardVoteUpdate", {
         voterColor: player.color,
         voteCount: this.clearBoardVotes.size,
-        requiredVotes: 3
+        requiredVotes
       });
 
-      // Check if all 3 players have voted
-      if (this.clearBoardVotes.size === 3) {
+      // Check if all active players have voted
+      if (this.clearBoardVotes.size >= requiredVotes) {
         this.executeClearBoard();
       }
     });
@@ -445,7 +469,7 @@ export class GameRoom extends Room<GameState> {
       });
 
       // Count active (non-spectator) players
-      const activePlayers = [...this.state.players.keys()].filter(id => !this.spectatorSessionIds.has(id));
+      const activePlayers = this.getActivePlayerSessionIds();
       const requiredVotes = activePlayers.length;
 
       // If first vote, start the timer and notify all players
@@ -625,11 +649,9 @@ export class GameRoom extends Room<GameState> {
         player.school = playerSchool;
         player.discordName = playerDiscordName;
         // Use default position for color
-        switch (existingColor) {
-          case "RED": player.x = 10; player.y = 14; break;
-          case "GREEN": player.x = 12; player.y = 14; break;
-          case "BLUE": player.x = 14; player.y = 14; break;
-        }
+        const position = this.getPlayerStartPosition(existingColor);
+        player.x = position.x;
+        player.y = position.y;
         this.state.players.set(client.sessionId, player);
         console.log(`Recreated player ${existingColor} at position (${player.x}, ${player.y})`);
       }
@@ -686,20 +708,9 @@ export class GameRoom extends Room<GameState> {
     player.discordName = playerDiscordName;
 
     // Set initial position based on color
-    switch (availableColor) {
-      case "RED":
-        player.x = 10;
-        player.y = 14;
-        break;
-      case "GREEN":
-        player.x = 12;
-        player.y = 14;
-        break;
-      case "BLUE":
-        player.x = 14;
-        player.y = 14;
-        break;
-    }
+    const position = this.getPlayerStartPosition(availableColor);
+    player.x = position.x;
+    player.y = position.y;
 
     console.log(`Player ${availableColor} starting at position (${player.x}, ${player.y})`);
 
@@ -713,14 +724,8 @@ export class GameRoom extends Room<GameState> {
 
     console.log(`Total players now: ${this.state.players.size}`);
 
-    // In solo mode, create the remaining 2 players and start immediately
+    // In solo mode, create the remaining players and start immediately
     if (this.isSoloMode && this.state.players.size === 1 && !this.state.gameStarted) {
-      const positions: Record<string, { x: number; y: number }> = {
-        RED: { x: 10, y: 14 },
-        GREEN: { x: 12, y: 14 },
-        BLUE: { x: 14, y: 14 },
-      };
-
       for (const color of this.playerColors) {
         if (this.assignedColors.has(color)) continue;
 
@@ -729,8 +734,9 @@ export class GameRoom extends Room<GameState> {
         soloPlayer.color = color;
         soloPlayer.sessionId = `solo-${color.toLowerCase()}`;
         soloPlayer.name = color;
-        soloPlayer.x = positions[color].x;
-        soloPlayer.y = positions[color].y;
+        const soloPosition = this.getPlayerStartPosition(color);
+        soloPlayer.x = soloPosition.x;
+        soloPlayer.y = soloPosition.y;
 
         this.state.players.set(soloPlayer.sessionId, soloPlayer);
 
@@ -743,14 +749,14 @@ export class GameRoom extends Room<GameState> {
         console.log(`Solo mode: Created ${color} player at (${soloPlayer.x}, ${soloPlayer.y})`);
       }
 
-      console.log("Solo mode: All 3 players created, initializing game...");
+      console.log(`Solo mode: All ${this.playerColors.length} players created, initializing game...`);
       this.initializeGame();
       return;
     }
 
-    // If all 3 players have joined, initialize the game
-    if (this.state.players.size === 3 && !this.state.gameStarted) {
-      console.log("All 3 players joined! Initializing game...");
+    // Start when every color slot is occupied. This grew from 3 to 6 players automatically.
+    if (this.state.players.size === this.playerColors.length && !this.state.gameStarted) {
+      console.log(`All ${this.playerColors.length} players joined! Initializing game...`);
       this.initializeGame();
     }
   }
@@ -1053,7 +1059,8 @@ export class GameRoom extends Room<GameState> {
       return;
     }
 
-    const colors: PlayerColor[] = ["RED", "GREEN", "BLUE"];
+    // Spawn color-specific collectibles once for each playable color.
+    const colors = this.playerColors;
     const collectibleCounters = new Map<CollectibleType, number>();
 
     // Calculate center offset for the 26x26 grid
@@ -1239,13 +1246,16 @@ export class GameRoom extends Room<GameState> {
   }
 
   private calculateScores() {
+    // Use the same color list for all score math so adding a color updates the loop once.
+    const colors = this.playerColors;
     const scores: Record<PlayerColor, number> = {
       RED: 0,
       GREEN: 0,
       BLUE: 0,
+      YELLOW: 0,
+      PURPLE: 0,
+      CYAN: 0,
     };
-
-    const colors: PlayerColor[] = ["RED", "GREEN", "BLUE"];
 
 
     /* Only clear activation when needed — writing every collectible every move
@@ -1300,23 +1310,20 @@ export class GameRoom extends Room<GameState> {
       if (collectible.score !== score) {
         collectible.score = score;
       }
-      // Split score equally among all players
-      const scorePerPlayer = score / 3;
-      scores.RED += scorePerPlayer;
-      scores.GREEN += scorePerPlayer;
-      scores.BLUE += scorePerPlayer;
+      // Split score equally among all players.
+      const scorePerPlayer = score / colors.length;
+      for (const color of colors) {
+        scores[color] += scorePerPlayer;
+      }
     }
 
     // Update state (skip unchanged map entries to shrink encoded patches)
-    const nextTotal = scores.RED + scores.GREEN + scores.BLUE;
-    if (this.state.scores.get("RED") !== scores.RED) {
-      this.state.scores.set("RED", scores.RED);
-    }
-    if (this.state.scores.get("GREEN") !== scores.GREEN) {
-      this.state.scores.set("GREEN", scores.GREEN);
-    }
-    if (this.state.scores.get("BLUE") !== scores.BLUE) {
-      this.state.scores.set("BLUE", scores.BLUE);
+    // Reduce adds all per-color scores into the one total score.
+    const nextTotal = colors.reduce((sum, color) => sum + scores[color], 0);
+    for (const color of colors) {
+      if (this.state.scores.get(color) !== scores[color]) {
+        this.state.scores.set(color, scores[color]);
+      }
     }
 
     if (this.state.totalScore !== nextTotal) {
@@ -1483,7 +1490,8 @@ export class GameRoom extends Room<GameState> {
     }
 
     // Add new collectibles for each stage advancement
-    const colors: PlayerColor[] = ["RED", "GREEN", "BLUE"];
+    // Later-stage collectible spawning uses the same six-color list as player setup.
+    const colors = this.playerColors;
     const center = Math.floor(this.MAX_GRID_SIZE / 2);
     const halfWidth = Math.floor(this.state.gridWidth / 2);
     const halfHeight = Math.floor(this.state.gridHeight / 2);

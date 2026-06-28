@@ -1,10 +1,10 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { getPlayerTailwindTextClass } from "@/constants/playerColors";
+import { getPlayerTailwindTextClass, PLAYER_COLOR_IDS, type PlayerColorId } from "@/constants/playerColors";
 import { HudCornerLs, POLAR_HUD } from "@/components/ui/polar-chrome";
 
-type PlayerColor = "RED" | "GREEN" | "BLUE";
+type PlayerColor = PlayerColorId;
 
 interface PlayerInfo {
   name: string;
@@ -98,7 +98,8 @@ export const ResultsOverlay = ({
 
             {!soloMode && (
               <div className="border-t border-white/10">
-                {(["RED", "GREEN", "BLUE"] as const).map((color) => {
+                {/* Render one results row per playable color, in the shared display order. */}
+                {PLAYER_COLOR_IDS.map((color) => {
                   const player = players.find((p) => p.color === color);
                   return (
                     <div

@@ -1,7 +1,7 @@
 import { useRef, useMemo, useLayoutEffect, useState, useEffect } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
-import { getFloorTint, getPlayerHex } from "@/constants/playerColors";
+import { getFloorTint, type PlayerColorLower } from "@/constants/playerColors";
 
 /**
  * Tutorial-only floor: **same tile look as `ParticleFloor`** (1.6 planes, twin
@@ -19,10 +19,13 @@ interface TutorialParticleFloorProps {
 }
 
 // Same tile tints as `ParticleFloor` — from `playerColors` SSOT.
-const FLOOR_COLOR_MAP: Record<"red" | "blue" | "green" | "gray", THREE.Color> = {
-    red: new THREE.Color(getPlayerHex("RED")),
-    blue: new THREE.Color(getPlayerHex("BLUE")),
+const FLOOR_COLOR_MAP: Record<PlayerColorLower | "gray", THREE.Color> = {
+    red: new THREE.Color(getFloorTint("RED")),
     green: new THREE.Color(getFloorTint("GREEN")),
+    blue: new THREE.Color(getFloorTint("BLUE")),
+    yellow: new THREE.Color(getFloorTint("YELLOW")),
+    purple: new THREE.Color(getFloorTint("PURPLE")),
+    cyan: new THREE.Color(getFloorTint("CYAN")),
     gray: new THREE.Color("#888888"),
 };
 

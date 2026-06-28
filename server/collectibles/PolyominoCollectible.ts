@@ -22,7 +22,8 @@ import { GridCell } from "../schema/GameState";
 // Each shape is associated with a player color
 type PolyominoShape = Array<[number, number]>;
 
-// Shape definitions based on the provided images
+// Shape definitions based on the provided images.
+// Because this is `Record<PlayerColor, ...>`, TypeScript requires one shape for every playable color.
 const POLYOMINO_SHAPES: Record<PlayerColor, PolyominoShape> = {
   // RED: 2x4 rectangle (8 cells)
   // Shape:
@@ -59,6 +60,30 @@ const POLYOMINO_SHAPES: Record<PlayerColor, PolyominoShape> = {
     [1, 0], [2, 0],
     [0, 1], [1, 1], [2, 1],
     [0, 2], [1, 2]
+  ],
+
+  // YELLOW: Plus pattern (5 cells)
+  YELLOW: [
+    [1, 0],
+    [0, 1], [1, 1], [2, 1],
+    [1, 2]
+  ],
+
+  // PURPLE: T-shaped pattern (7 cells)
+  PURPLE: [
+    [0, 0], [1, 0], [2, 0],
+    [1, 1],
+    [1, 2],
+    [1, 3],
+    [1, 4]
+  ],
+
+  // CYAN: Zigzag pattern (7 cells)
+  CYAN: [
+    [0, 0], [1, 0],
+    [1, 1], [2, 1],
+    [2, 2], [3, 2],
+    [3, 3]
   ]
 };
 

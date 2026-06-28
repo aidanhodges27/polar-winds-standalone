@@ -36,13 +36,16 @@ import {
   getPlayerDisplayLabel,
   getPlayerHex,
   getPlayerUiLabelHex,
+  PLAYER_COLOR_IDS,
   PLAYER_HEX,
   PLAYER_HEX_LOWER,
+  type PlayerColorId,
+  type PlayerColorLower,
 } from "@/constants/playerColors";
 
 // Types
-type PlayerColor = "RED" | "GREEN" | "BLUE";
-type ClueColorLower = "red" | "green" | "blue";
+type PlayerColor = PlayerColorId;
+type ClueColorLower = PlayerColorLower;
 type CollectibleType = "network" | "box" | "equilibrium" | "clone" | "vantage" | "galaxy" | "polyomino";
 type CollectibleOrientation = 0 | 90 | 180 | 270;
 
@@ -88,16 +91,23 @@ const COLOR_MAP_LOWER: Record<PlayerColor, ClueColorLower> = {
   RED: "red",
   GREEN: "green",
   BLUE: "blue",
+  YELLOW: "yellow",
+  PURPLE: "purple",
+  CYAN: "cyan",
 };
 
 /** Stage score bar fill (bottom → top), aligned with board color identity. */
 const NEUTRAL_BAR_GRADIENT =
   "linear-gradient(to top, #1e293b 0%, #334155 12%, #475569 24%, #64748b 38%, #94a3b8 54%, #cbd5e1 68%, #e2e8f0 82%, #f1f5f9 92%, #ffffff 100%)";
 
+// Give every color the same neutral score-bar gradient for now.
 const SCORE_BAR_GRADIENT: Record<PlayerColor, string> = {
   RED: NEUTRAL_BAR_GRADIENT,
   GREEN: NEUTRAL_BAR_GRADIENT,
   BLUE: NEUTRAL_BAR_GRADIENT,
+  YELLOW: NEUTRAL_BAR_GRADIENT,
+  PURPLE: NEUTRAL_BAR_GRADIENT,
+  CYAN: NEUTRAL_BAR_GRADIENT,
 };
 
 const CONTROL_KEYS = {
@@ -224,10 +234,13 @@ const SmoothZoom = ({
 };
 
 // Connection Lines Component — batched into a single InstancedMesh
-const colorMap: Record<string, THREE.Color> = {
+const colorMap: Record<PlayerColorLower, THREE.Color> = {
   red: new THREE.Color(PLAYER_HEX_LOWER.red),
-  blue: new THREE.Color(PLAYER_HEX_LOWER.blue),
   green: new THREE.Color(PLAYER_HEX_LOWER.green),
+  blue: new THREE.Color(PLAYER_HEX_LOWER.blue),
+  yellow: new THREE.Color(PLAYER_HEX_LOWER.yellow),
+  purple: new THREE.Color(PLAYER_HEX_LOWER.purple),
+  cyan: new THREE.Color(PLAYER_HEX_LOWER.cyan),
 };
 
 // Shared geometry for all line segments (thin cylinder along Y)
@@ -975,10 +988,9 @@ export const GameScreen = ({
         return;
       }
 
-      // Dev mode: 1/2/3 to switch to red/green/blue player
-      if (isDevMode && isSoloMode && (e.key === "1" || e.key === "2" || e.key === "3")) {
-        const colorMap: Record<string, PlayerColor> = { "1": "RED", "2": "GREEN", "3": "BLUE" };
-        const targetColor = colorMap[e.key];
+      // Dev mode: 1-6 switches between player colors in the PLAYER_COLOR_IDS order.
+      if (isDevMode && isSoloMode && /^[1-6]$/.test(e.key)) {
+        const targetColor = PLAYER_COLOR_IDS[Number(e.key) - 1];
         const playerArray = Array.from(players.values());
         const targetIndex = playerArray.findIndex(p => p.color === targetColor);
         if (targetIndex !== -1 && targetIndex !== activePlayerIndex) {
@@ -1209,12 +1221,13 @@ export const GameScreen = ({
 
   const getDisplayColor = (collectibleColor: string) => {
     if (collectibleColor === "NEUTRAL") return "#ffffff";
-    if (collectibleColor === "RED" || collectibleColor === "GREEN" || collectibleColor === "BLUE") {
-      return getPlayerHex(collectibleColor);
+    // Most server colors arrive as uppercase IDs, so try the uppercase lookup first.
+    if (collectibleColor in PLAYER_HEX) {
+      return PLAYER_HEX[collectibleColor as PlayerColor];
     }
-    const colorLower = COLOR_MAP_LOWER[collectibleColor as PlayerColor];
-    if (!colorLower) return getPlayerHex("GREEN");
-    return getPlayerHex(colorLower.toUpperCase() as PlayerColor);
+    // If a lower-case value ever reaches this function, fall back to the lower-case lookup.
+    const colorLower = collectibleColor.toLowerCase() as PlayerColorLower;
+    return PLAYER_HEX_LOWER[colorLower] ?? getPlayerHex("GREEN");
   };
 
   return (
@@ -2099,7 +2112,8 @@ export const GameScreen = ({
           <button
             onClick={() => {
               if (room) {
-                console.log(`[Dev Mode] Score at stage up: ${totalScore} (RED: ${scores.RED}, GREEN: ${scores.GREEN}, BLUE: ${scores.BLUE}) | Stage: ${stage}`);
+                const scoreSummary = PLAYER_COLOR_IDS.map((color) => `${color}: ${scores[color]}`).join(", ");
+                console.log(`[Dev Mode] Score at stage up: ${totalScore} (${scoreSummary}) | Stage: ${stage}`);
                 room.send("devStageUp", {});
               }
             }}
@@ -2183,7 +2197,7 @@ export const GameScreen = ({
                     <GoldAura isGold={collectible.isGold} color={displayColor}>
                       <group rotation={[Math.PI / 2, 0, 0]}>
                         <EquilateralTriangle color={displayColor} scale={1.0} connected={collectible.isActivated} />
-                      </group>
+                      </group> 
                     </GoldAura>
                   </group>
                 );

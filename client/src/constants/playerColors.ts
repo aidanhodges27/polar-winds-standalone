@@ -18,10 +18,13 @@
  */
 
 // ── Canonical IDs (matches server/schema `PlayerColor`) ─────────────────────
-export type PlayerColorId = "RED" | "GREEN" | "BLUE";
-export type PlayerColorLower = "red" | "green" | "blue";
+// Uppercase IDs are what the server sends over the network.
+export type PlayerColorId = "RED" | "GREEN" | "BLUE" | "YELLOW" | "PURPLE" | "CYAN";
+// Lowercase IDs are easier to use in client-only render maps and CSS-ish names.
+export type PlayerColorLower = "red" | "green" | "blue" | "yellow" | "purple" | "cyan";
 
-export const PLAYER_COLOR_IDS: readonly PlayerColorId[] = ["RED", "GREEN", "BLUE"] as const;
+// This ordered list is reused by loops so the UI does not need separate hard-coded color arrays.
+export const PLAYER_COLOR_IDS: readonly PlayerColorId[] = ["RED", "GREEN", "BLUE", "YELLOW", "PURPLE", "CYAN"] as const;
 
 // ── Palette shape ────────────────────────────────────────────────────────────
 export interface PlayerPalette {
@@ -68,6 +71,7 @@ export interface PlayerTheme {
 }
 
 // ── THE palette (visuals only; IDs unchanged) ───────────────────────────────
+// `Record<PlayerColorId, PlayerTheme>` means every PlayerColorId must have a theme.
 export const PLAYER_COLORS: Record<PlayerColorId, PlayerTheme> = {
   RED: {
     id: "RED",
@@ -110,6 +114,45 @@ export const PLAYER_COLORS: Record<PlayerColorId, PlayerTheme> = {
     edgeColor: "#ffffff",
     edgeOpacity: 0.08,
   },
+  YELLOW: {
+    id: "YELLOW",
+    idLower: "yellow",
+    label: "Yellow",
+    tailwindTextClass: "text-yellow-300",
+    palette: {
+      main: "#ffd21a",
+      glow: "#ffe66d",
+      rim: "#fff2a8",
+    },
+    edgeColor: "#000000",
+    edgeOpacity: 0.12,
+  },
+  PURPLE: {
+    id: "PURPLE",
+    idLower: "purple",
+    label: "Purple",
+    tailwindTextClass: "text-purple-400",
+    palette: {
+      main: "#a855f7",
+      glow: "#c084fc",
+      rim: "#e9d5ff",
+    },
+    edgeColor: "#ffffff",
+    edgeOpacity: 0.08,
+  },
+  CYAN: {
+    id: "CYAN",
+    idLower: "cyan",
+    label: "Cyan",
+    tailwindTextClass: "text-cyan-300",
+    palette: {
+      main: "#22d3ee",
+      glow: "#67e8f9",
+      rim: "#a5f3fc",
+    },
+    edgeColor: "#ffffff",
+    edgeOpacity: 0.08,
+  },
 };
 
 // ── Helpers ─────────────────────────────────────────────────────────────────-
@@ -148,6 +191,7 @@ export function toLowerId(id: PlayerColorId): PlayerColorLower {
 }
 
 export function toUpperId(lower: PlayerColorLower): PlayerColorId {
+  // The input type guarantees `lower` is one of our known lowercase IDs.
   return lower.toUpperCase() as PlayerColorId;
 }
 
@@ -163,28 +207,41 @@ export function getPlayerEdgeOpacity(id: PlayerColorId): number {
   return PLAYER_COLORS[id].edgeOpacity;
 }
 
+// Quick lookup for "what hex color should this player ID use?"
 export const PLAYER_HEX: Record<PlayerColorId, string> = {
   RED: PLAYER_COLORS.RED.palette.main,
   GREEN: PLAYER_COLORS.GREEN.palette.main,
   BLUE: PLAYER_COLORS.BLUE.palette.main,
+  YELLOW: PLAYER_COLORS.YELLOW.palette.main,
+  PURPLE: PLAYER_COLORS.PURPLE.palette.main,
+  CYAN: PLAYER_COLORS.CYAN.palette.main,
 };
 
+// Same color lookup as PLAYER_HEX, keyed by lowercase IDs for renderer code.
 export const PLAYER_HEX_LOWER: Record<PlayerColorLower, string> = {
   red: PLAYER_COLORS.RED.palette.main,
   green: PLAYER_COLORS.GREEN.palette.main,
   blue: PLAYER_COLORS.BLUE.palette.main,
+  yellow: PLAYER_COLORS.YELLOW.palette.main,
+  purple: PLAYER_COLORS.PURPLE.palette.main,
+  cyan: PLAYER_COLORS.CYAN.palette.main,
 };
 
+// Labels shown in UI instead of raw server IDs.
 export const PLAYER_COLOR_LABEL: Record<PlayerColorId, string> = {
   RED: PLAYER_COLORS.RED.label,
   GREEN: PLAYER_COLORS.GREEN.label,
   BLUE: PLAYER_COLORS.BLUE.label,
+  YELLOW: PLAYER_COLORS.YELLOW.label,
+  PURPLE: PLAYER_COLORS.PURPLE.label,
+  CYAN: PLAYER_COLORS.CYAN.label,
 };
 
 /** UI copy for a server player id (`GREEN` → theme label, e.g. "Monochrome"). */
 export function getPlayerDisplayLabel(color: string): string {
-  if (color === "RED" || color === "GREEN" || color === "BLUE") {
-    return PLAYER_COLOR_LABEL[color];
+  // `color` may be any server string, so check the lookup before casting it.
+  if (color in PLAYER_COLOR_LABEL) {
+    return PLAYER_COLOR_LABEL[color as PlayerColorId];
   }
   return color;
 }
