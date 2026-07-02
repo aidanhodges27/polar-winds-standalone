@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback, useReducer } from "react";
-import type { CSSProperties } from "react";
+import type { CSSProperties, Dispatch } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import * as Client from "colyseus.js";
 import { toast } from "sonner";
@@ -83,6 +83,11 @@ interface ServerGameState {
   stage: number;
   stageThresholds: number[];
   seed: number;
+  linkedSessionId: string;
+  linkedTeamId: "A" | "B" | "";
+  linkedTeamLabel: string;
+  linkedOpponentRoomId: string;
+  gameDurationSeconds: number;
 }
 
 // Batched game state — updated atomically via reducer
@@ -105,7 +110,9 @@ interface GameStateLocal {
   seed: number;
 }
 
-type GameAction = { type: "SYNC_STATE"; payload: GameStateLocal };
+type GameAction =
+  | { type: "SYNC_STATE"; payload: GameStateLocal }
+  | { type: "MARK_GAME_OVER" };
 
 // Build a score object with one key for every playable color.
 const createEmptyScores = (): Record<PlayerColor, number> => ({
@@ -150,6 +157,12 @@ function gameReducer(_state: GameStateLocal, action: GameAction): GameStateLocal
   switch (action.type) {
     case "SYNC_STATE":
       return action.payload;
+    case "MARK_GAME_OVER":
+      return {
+        ..._state,
+        isGameOver: true,
+        timeRemaining: 0,
+      };
     default:
       return _state;
   }
@@ -180,22 +193,27 @@ const Index = () => {
 
   // Connection state
   const [room, setRoom] = useState<Client.Room<ServerGameState> | null>(null);
+  const [opponentRoom, setOpponentRoom] = useState<Client.Room<ServerGameState> | null>(null);
   const [myColor, setMyColor] = useState<PlayerColor | null>(null);
   const clientRef = useRef<Client.Client | null>(null);
   const roomRef = useRef<Client.Room<ServerGameState> | null>(null);
+  const opponentRoomRef = useRef<Client.Room<ServerGameState> | null>(null);
   /** Resolved Colyseus room id — known after the initial join (joinOrCreate may
    * create a fresh room). Used so reconnects target the same room. */
   const connectedRoomIdRef = useRef<string | null>(routerState?.initPayload?.roomId ?? null);
+  const opponentRoomIdRef = useRef<string | null>(routerState?.initPayload?.linkedSession?.spectatorRoomId ?? null);
   /** Coalesce Colyseus onStateChange bursts into one React update per frame (reduces move jank). */
 
   // Batched game state — single dispatch = single re-render
   const [gameState, dispatch] = useReducer(gameReducer, initialGameState);
+  const [opponentGameState, opponentDispatch] = useReducer(gameReducer, initialGameState);
 
   // UI-only state (not server-synced)
   const [showGo, setShowGo] = useState(false);
   const prevCountdownRef = useRef(0);
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [showResults, setShowResults] = useState(false);
+  const showResultsRef = useRef(false);
   const resultsReasonRef = useRef<"gameover" | "abandoned">("gameover");
   // Accumulates new milestones as the server broadcasts them during the game.
   // Keyed by player color → list of unlocks with card text from game_milestones.
@@ -219,14 +237,29 @@ const Index = () => {
     micEnabled,
   });
 
+  useEffect(() => {
+    showResultsRef.current = showResults;
+  }, [showResults]);
+
+  const completeGame = useCallback((reason: "gameover" | "abandoned") => {
+    if (showResultsRef.current) return;
+    showResultsRef.current = true;
+    if (reason === "gameover") {
+      dispatch({ type: "MARK_GAME_OVER" });
+      opponentDispatch({ type: "MARK_GAME_OVER" });
+    }
+    roomRef.current?.leave();
+    opponentRoomRef.current?.leave();
+    resultsReasonRef.current = reason;
+    setShowResults(true);
+  }, []);
+
   // Show results overlay when game ends (stay on /play so LiveKit voice persists)
   useEffect(() => {
-    if (!gameState.isGameOver) return;
-
-    room?.leave();
-    resultsReasonRef.current = "gameover";
-    setShowResults(true);
-  }, [gameState.isGameOver]);
+    const linkedOpponentEnded = Boolean(initPayload?.linkedSession && opponentGameState.isGameOver);
+    if (!gameState.isGameOver && !linkedOpponentEnded) return;
+    completeGame("gameover");
+  }, [completeGame, gameState.isGameOver, initPayload?.linkedSession, opponentGameState.isGameOver]);
 
   // Open milestones modal 1s after results show, if the local player has any unlocks.
   useEffect(() => {
@@ -255,13 +288,17 @@ const Index = () => {
     }
   }, [gameState.countdown, playSound]);
 
-  const createStateUpdater = useCallback((gameRoom: Client.Room<ServerGameState>) => () => {
+  const createStateUpdater = useCallback((
+    gameRoom: Client.Room<ServerGameState>,
+    targetDispatch: Dispatch<GameAction> = dispatch,
+    captureMyColor = true,
+  ) => () => {
     if (!gameRoom.state) return;
 
     const newPlayers = new Map<string, PlayerState>();
     gameRoom.state.players?.forEach((p, id) => {
       newPlayers.set(id, { x: p.x, y: p.y, color: p.color, sessionId: p.sessionId, name: p.name || "", school: p.school || "", discordName: p.discordName || "" });
-      if (id === gameRoom.sessionId && !myColor) setMyColor(p.color);
+      if (captureMyColor && id === gameRoom.sessionId && !myColor) setMyColor(p.color);
     });
 
     const newGridColors = new Map<string, PlayerColor>();
@@ -293,7 +330,7 @@ const Index = () => {
       });
     });
 
-    dispatch({
+    targetDispatch({
       type: "SYNC_STATE",
       payload: {
         gridWidth: gameRoom.state.gridWidth || 10,
@@ -335,8 +372,22 @@ const Index = () => {
     const MAX_RECONNECT_ATTEMPTS = 5;
     const RECONNECT_BASE_DELAY = 1500;
 
-    function setupRoom(gameRoom: Client.Room<ServerGameState>) {
-      const runSync = () => createStateUpdaterRef.current(gameRoom)();
+    function setupRoom(
+      gameRoom: Client.Room<ServerGameState>,
+      options: {
+        targetDispatch?: Dispatch<GameAction>;
+        captureMyColor?: boolean;
+        handlePlayerMessages?: boolean;
+        allowReconnect?: boolean;
+      } = {},
+    ) {
+      const {
+        targetDispatch = dispatch,
+        captureMyColor = true,
+        handlePlayerMessages = true,
+        allowReconnect = true,
+      } = options;
+      const runSync = () => createStateUpdaterRef.current(gameRoom, targetDispatch, captureMyColor)();
       // Sync immediately on every patch so countdown (and other fields) never sit one frame behind or coalesce wrong.
       gameRoom.onStateChange(runSync);
 
@@ -346,9 +397,19 @@ const Index = () => {
 
       gameRoom.onLeave((code) => {
         console.log(`Disconnected from room (code: ${code})`);
-        if (code === 1006) {
+        const state = gameRoom.state;
+        const closedAtEnd =
+          state?.isGameOver ||
+          (!initPayload.devMode && state?.gameStarted && (state.timeRemaining ?? Infinity) <= 1);
+        if (closedAtEnd) {
+          targetDispatch({ type: "MARK_GAME_OVER" });
+          completeGame("gameover");
+          return;
+        }
+
+        if (allowReconnect && code === 1006) {
           attemptReconnect();
-        } else if (code !== 1000 && code !== 1001 && code !== 4000) {
+        } else if (allowReconnect && code !== 1000 && code !== 1001 && code !== 4000) {
           toast.error("Disconnected from the game.");
           if (returnUrl) {
             window.location.href = buildReturnUrl(returnUrl, { reason: "disconnected", disconnectReason: "unexpected" });
@@ -360,7 +421,14 @@ const Index = () => {
         toast.success("Board cleared!");
       });
 
+      gameRoom.onMessage("gameOver", () => {
+        runSync();
+        targetDispatch({ type: "MARK_GAME_OVER" });
+        completeGame("gameover");
+      });
+
       gameRoom.onMessage("voiceReady", (message: { token: string; livekitUrl: string; roomName: string; playerColors?: Record<string, string> }) => {
+        if (!handlePlayerMessages) return;
         setVoiceToken(message.token);
         setLivekitUrl(message.livekitUrl);
         if (message.playerColors) {
@@ -371,6 +439,7 @@ const Index = () => {
       gameRoom.onMessage(
         "milestoneUnlocked",
         (data: { color: PlayerColor; type: string; name: string | null; description: string | null }) => {
+          if (!handlePlayerMessages) return;
           setUnlockedDuringGame((prev) => {
             const existing = prev[data.color] ?? [];
             if (existing.some((m) => m.type === data.type)) return prev;
@@ -459,6 +528,46 @@ const Index = () => {
         const client = new Client.Client(initPayload.serverUrl);
         clientRef.current = client;
 
+        if (initPayload.linkedSession) {
+          // A linked session has two child GameRooms. This browser joins one
+          // as a player and the other as a spectator so both boards are visible
+          // but only the local team's board accepts movement input.
+          const linked = initPayload.linkedSession;
+          const playerRoom = await client.joinById<ServerGameState>(linked.playerRoomId, {
+            gameToken: initPayload.gameToken,
+            userId: initPayload.userId,
+            playerName: initPayload.playerName,
+            sessionId: initPayload.sessionId,
+          });
+          const spectatorRoom = await client.joinById<ServerGameState>(linked.spectatorRoomId, {
+            gameToken: initPayload.gameToken,
+            userId: `${initPayload.userId}-spectator`,
+            playerName: initPayload.playerName,
+            spectator: true,
+            sessionId: initPayload.sessionId,
+          });
+
+          connectedRoomIdRef.current = playerRoom.roomId;
+          opponentRoomIdRef.current = spectatorRoom.roomId;
+
+          const updatePlayerState = setupRoom(playerRoom);
+          const updateSpectatorState = setupRoom(spectatorRoom, {
+            targetDispatch: opponentDispatch,
+            captureMyColor: false,
+            handlePlayerMessages: false,
+            allowReconnect: false,
+          });
+          updatePlayerState();
+          updateSpectatorState();
+
+          roomRef.current = playerRoom;
+          opponentRoomRef.current = spectatorRoom;
+          setRoom(playerRoom);
+          setOpponentRoom(spectatorRoom);
+          setPhase("game");
+          return;
+        }
+
         // Joining/spectating/reconnecting target an explicit Colyseus room id
         // (joinById). Standalone solo/multiplayer always create a fresh room; its
         // server-assigned room id is the shareable code others join by.
@@ -508,7 +617,8 @@ const Index = () => {
 
     return () => {
       aborted = true;
-      if (room) room.leave();
+      roomRef.current?.leave();
+      opponentRoomRef.current?.leave();
     };
   }, [initPayload]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -606,38 +716,104 @@ const Index = () => {
     );
   }
 
+  const linkedSession = initPayload.linkedSession;
+  const renderBoard = (
+    boardRoom: Client.Room<ServerGameState> | null,
+    boardState: GameStateLocal,
+    boardTitle: string,
+    boardSubtitle: string,
+    boardIsSpectator: boolean,
+  ) => (
+    <GameScreen
+      room={boardRoom}
+      players={boardState.players}
+      gridColors={boardState.gridColors}
+      collectibles={boardState.collectibles}
+      enemies={boardState.enemies}
+      gridWidth={boardState.gridWidth}
+      gridHeight={boardState.gridHeight}
+      myColor={boardIsSpectator ? null : myColor}
+      isSoloMode={false}
+      scores={boardState.scores}
+      totalScore={boardState.totalScore}
+      highScore={boardState.highScore}
+      stage={boardState.stage}
+      stageThresholds={boardState.stageThresholds}
+      timeRemaining={boardState.timeRemaining}
+      isDevMode={initPayload?.devMode || false}
+      isSpectator={boardIsSpectator}
+      seed={boardState.seed}
+      isGameOver={boardState.isGameOver}
+      countdown={boardState.countdown}
+      challengeName={initPayload?.challengeName}
+      layout="panel"
+      boardTitle={boardTitle}
+      boardSubtitle={boardSubtitle}
+      onGameAbandoned={
+        boardIsSpectator
+          ? undefined
+          : () => completeGame("abandoned")
+      }
+    />
+  );
+
+  // TODO: alter position and move this code to GameScreen.tsx.
+  // Team vs. Team ingame "TEAM MATCH CODE" display box.
   return (
     <div className="relative min-h-dvh w-full bg-canvas text-foreground">
-      <GameScreen
-        room={room}
-        players={gameState.players}
-        gridColors={gameState.gridColors}
-        collectibles={gameState.collectibles}
-        enemies={gameState.enemies}
-        gridWidth={gameState.gridWidth}
-        gridHeight={gameState.gridHeight}
-        myColor={myColor}
-        isSoloMode={initPayload?.soloMode || false}
-        scores={gameState.scores}
-        totalScore={gameState.totalScore}
-        highScore={gameState.highScore}
-        stage={gameState.stage}
-        stageThresholds={gameState.stageThresholds}
-        timeRemaining={gameState.timeRemaining}
-        isDevMode={initPayload?.devMode || false}
-        isSpectator={isSpectator}
-        seed={gameState.seed}
-        isGameOver={gameState.isGameOver}
-        countdown={gameState.countdown}
-        bgMusicVolume={initPayload?.bgMusicUrl ? bgMusicVolume : undefined}
-        onBgMusicVolumeChange={initPayload?.bgMusicUrl ? setBgMusicVolume : undefined}
-        challengeName={initPayload?.challengeName}
-        onGameAbandoned={() => {
-          room?.leave();
-          resultsReasonRef.current = "abandoned";
-          setShowResults(true);
-        }}
-      />
+      {linkedSession ? (
+        <div className="grid h-dvh w-full grid-cols-1 gap-px bg-sky-950/40 lg:grid-cols-2">
+          <div className="pointer-events-none fixed left-1/2 top-3 z-30 -translate-x-1/2 rounded-none border border-sky-300/35 bg-canvas/70 px-4 py-2 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-[6px]">
+            <p className="font-montreal text-[9px] uppercase leading-tight tracking-[0.16em] text-slate-300">Team Match Code</p>
+            <p className="font-montreal text-sm font-semibold uppercase leading-tight tracking-[0.18em] text-white">{linkedSession.sessionId}</p>
+          </div>
+          <section className="relative min-h-[50dvh] min-w-0 overflow-hidden bg-canvas lg:min-h-dvh">
+            {renderBoard(
+              linkedSession.playerTeamId === "A" ? room : opponentRoom,
+              linkedSession.playerTeamId === "A" ? gameState : opponentGameState,
+              "Team A",
+              "Orange / White / Blue",
+              linkedSession.playerTeamId !== "A",
+            )}
+          </section>
+          <section className="relative min-h-[50dvh] min-w-0 overflow-hidden bg-canvas lg:min-h-dvh">
+            {renderBoard(
+              linkedSession.playerTeamId === "B" ? room : opponentRoom,
+              linkedSession.playerTeamId === "B" ? gameState : opponentGameState,
+              "Team B",
+              "Yellow / Purple / Cyan",
+              linkedSession.playerTeamId !== "B",
+            )}
+          </section>
+        </div>
+      ) : (
+        <GameScreen
+          room={room}
+          players={gameState.players}
+          gridColors={gameState.gridColors}
+          collectibles={gameState.collectibles}
+          enemies={gameState.enemies}
+          gridWidth={gameState.gridWidth}
+          gridHeight={gameState.gridHeight}
+          myColor={myColor}
+          isSoloMode={initPayload?.soloMode || false}
+          scores={gameState.scores}
+          totalScore={gameState.totalScore}
+          highScore={gameState.highScore}
+          stage={gameState.stage}
+          stageThresholds={gameState.stageThresholds}
+          timeRemaining={gameState.timeRemaining}
+          isDevMode={initPayload?.devMode || false}
+          isSpectator={isSpectator}
+          seed={gameState.seed}
+          isGameOver={gameState.isGameOver}
+          countdown={gameState.countdown}
+          bgMusicVolume={initPayload?.bgMusicUrl ? bgMusicVolume : undefined}
+          onBgMusicVolumeChange={initPayload?.bgMusicUrl ? setBgMusicVolume : undefined}
+          challengeName={initPayload?.challengeName}
+          onGameAbandoned={() => completeGame("abandoned")}
+        />
+      )}
       {/* TODO: revert — temporarily showing overlay in solo mode */}
       <PlatformVoiceOverlay
         participants={voice.participants}

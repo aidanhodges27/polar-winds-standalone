@@ -8,6 +8,14 @@ import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import { LiveKitService } from "../services/LiveKitService";
 import jwt from "jsonwebtoken";
+import {
+  LINKED_SESSION_DURATION_SECONDS,
+  LINKED_TEAM_CONFIGS,
+  markLinkedRoomReady,
+  registerLinkedRoom,
+  unregisterLinkedRoom,
+  type LinkedTeamId,
+} from "./LinkedSessionCoordinator";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -74,9 +82,16 @@ export class GameRoom extends Room<GameState> {
   private userIds: Map<string, string> = new Map(); // sessionId -> userId
   private userIdToColor: Map<string, PlayerColor> = new Map(); // userId -> color for reconnection
   private spectatorSessionIds = new Set<string>();
+  private linkedSessionId: string | null = null;
+  private linkedTeamId: LinkedTeamId | null = null;
+  private linkedTeamLabel: string = "";
+  private linkedOpponentRoomId: string = "";
   private polarWindsSessionId: string | null = null;
   private gameTimer: ReturnType<typeof setInterval> | null = null;
-  private readonly GAME_DURATION = 30 * 60; // 30 minutes in seconds
+  private readonly DEFAULT_GAME_DURATION_SECONDS = 30 * 60; // 30 minutes in seconds
+  private gameDurationSeconds = this.DEFAULT_GAME_DURATION_SECONDS;
+  private isEndingGame = false;
+  private readonly FINAL_STATE_DISCONNECT_DELAY_MS = 350;
   private clearBoardVotes: Map<string, ClearBoardVote> = new Map();
   private clearBoardVoteTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly CLEAR_BOARD_VOTE_WINDOW = 5000; // 5 seconds
@@ -112,12 +127,57 @@ export class GameRoom extends Room<GameState> {
     return [...this.state.players.keys()].filter(id => !this.spectatorSessionIds.has(id));
   }
 
+  private parseAllowedColors(value: unknown): PlayerColor[] | null {
+    if (!Array.isArray(value)) return null;
+
+    const colors: PlayerColor[] = [];
+    for (const color of value) {
+      if (typeof color !== "string") continue;
+      if (!PLAYER_COLORS.includes(color as PlayerColor)) continue;
+      if (colors.includes(color as PlayerColor)) continue;
+      colors.push(color as PlayerColor);
+    }
+
+    return colors.length > 0 ? colors : null;
+  }
+
   onCreate(options: any) {
     console.log("GameRoom created with options:", options, "| Room ID:", this.roomId);
 
     this.isPlatformManaged = options.platformManaged || false;
     if (this.isPlatformManaged) {
       console.log("Room created in PLATFORM-MANAGED mode");
+    }
+
+    // A linked session is a parent match that owns two separate GameRooms.
+    // Each child room receives only the colors for its team, so Team A and
+    // Team B cannot accidentally share one board.
+    const linkedTeamId = options.linkedTeamId === "A" || options.linkedTeamId === "B"
+      ? options.linkedTeamId as LinkedTeamId
+      : null;
+    if (typeof options.linkedSessionId === "string" && linkedTeamId) {
+      const teamConfig = LINKED_TEAM_CONFIGS[linkedTeamId];
+      this.linkedSessionId = options.linkedSessionId;
+      this.linkedTeamId = linkedTeamId;
+      this.linkedTeamLabel = typeof options.linkedTeamLabel === "string"
+        ? options.linkedTeamLabel
+        : teamConfig.teamLabel;
+      this.linkedOpponentRoomId = typeof options.linkedOpponentRoomId === "string"
+        ? options.linkedOpponentRoomId
+        : "";
+      this.playerColors = this.parseAllowedColors(options.allowedColors) ?? [...teamConfig.colors];
+      this.gameDurationSeconds = Number(options.sharedDurationSeconds) || LINKED_SESSION_DURATION_SECONDS;
+      console.log(
+        `Linked session ${this.linkedSessionId}: ${this.linkedTeamLabel} uses colors ${this.playerColors.join(", ")}`
+      );
+    } else {
+      const allowedColors = this.parseAllowedColors(options.allowedColors);
+      if (allowedColors) {
+        // Standalone custom rooms can also pass allowedColors. The default path
+        // still uses all six colors when this option is omitted.
+        this.playerColors = allowedColors;
+      }
+      this.gameDurationSeconds = Number(options.gameDurationSeconds) || this.DEFAULT_GAME_DURATION_SECONDS;
     }
 
     // Keep room alive for the full session duration (players can reconnect)
@@ -225,6 +285,12 @@ export class GameRoom extends Room<GameState> {
 
     this.setState(new GameState());
     this.state.seed = seed;
+    this.state.linkedSessionId = this.linkedSessionId ?? "";
+    this.state.linkedTeamId = this.linkedTeamId ?? "";
+    this.state.linkedTeamLabel = this.linkedTeamLabel;
+    this.state.linkedOpponentRoomId = this.linkedOpponentRoomId;
+    this.state.gameDurationSeconds = this.gameDurationSeconds;
+    this.state.timeRemaining = this.gameDurationSeconds;
 
     // Set initial visible grid size
     this.state.gridWidth = this.INITIAL_VISIBLE_WIDTH;
@@ -240,9 +306,25 @@ export class GameRoom extends Room<GameState> {
 
     console.log("Initial state set, scores initialized");
 
+    if (this.linkedSessionId && this.linkedTeamId) {
+      // The coordinator is the small parent session. It does not run a board;
+      // it only waits until both child GameRooms are ready, then starts them
+      // against the same five-minute clock.
+      registerLinkedRoom({
+        sessionId: this.linkedSessionId,
+        durationSeconds: this.gameDurationSeconds,
+        teamId: this.linkedTeamId,
+        teamLabel: this.linkedTeamLabel,
+        colors: this.playerColors,
+        roomId: this.roomId,
+        room: this,
+      });
+    }
+
     // Handle player movement
     this.onMessage("move", (client, message: MoveMessage) => {
-      if (this.state.countdown > 0) return;
+      if (this.state.countdown > 0 || this.state.isGameOver) return;
+      if (!this.isDevMode && this.state.gameStarted && this.state.timeRemaining <= 0) return;
 
       // In solo mode with targetColor, move the specified color's player
       let player: Player | undefined;
@@ -754,10 +836,17 @@ export class GameRoom extends Room<GameState> {
       return;
     }
 
-    // Start when every color slot is occupied. This grew from 3 to 6 players automatically.
+    // Start when every color slot for this room is occupied. In a linked
+    // session that means three players for Team A or three players for Team B,
+    // not all six players in one room.
     if (this.state.players.size === this.playerColors.length && !this.state.gameStarted) {
-      console.log(`All ${this.playerColors.length} players joined! Initializing game...`);
-      this.initializeGame();
+      if (this.linkedSessionId && this.linkedTeamId) {
+        console.log(`${this.linkedTeamLabel} is ready; waiting for the other linked room`);
+        markLinkedRoomReady(this.linkedSessionId, this.linkedTeamId);
+      } else {
+        console.log(`All ${this.playerColors.length} players joined! Initializing game...`);
+        this.initializeGame();
+      }
     }
   }
 
@@ -842,6 +931,9 @@ export class GameRoom extends Room<GameState> {
       clearInterval(this.countdownTimer);
       this.countdownTimer = null;
     }
+    if (this.linkedSessionId && this.linkedTeamId) {
+      unregisterLinkedRoom(this.linkedSessionId, this.linkedTeamId, this);
+    }
 
     // Safety net: if the session was never successfully ended in the DB
     // (e.g. server shutdown, or endPolarWindsSession failed with a 500), retry now
@@ -851,7 +943,21 @@ export class GameRoom extends Room<GameState> {
     }
   }
 
-  private async initializeGame() {
+  public startLinkedSession(gameplayStartsAtMs: number) {
+    if (!this.linkedSessionId || !this.linkedTeamId || this.state.gameStarted) return;
+    void this.initializeGame(gameplayStartsAtMs);
+  }
+
+  public setLinkedOpponentRoomId(roomId: string) {
+    // This is display/connection metadata for the client. Game input still goes
+    // only to the room the player joined as a real player.
+    this.linkedOpponentRoomId = roomId;
+    this.state.linkedOpponentRoomId = roomId;
+  }
+
+  private async initializeGame(gameplayStartsAtMs?: number) {
+    if (this.state.gameStarted) return;
+
     // Cancel lobby timeout since game is starting
     if (this.lobbyTimeout) {
       clearTimeout(this.lobbyTimeout);
@@ -884,26 +990,31 @@ export class GameRoom extends Room<GameState> {
     }
 
     // Start countdown immediately — no ready-up handshake needed
-    this.startGameplay();
+    this.startGameplay(gameplayStartsAtMs);
   }
 
-  private startGameplay() {
+  private startGameplay(gameplayStartsAtMs?: number) {
     console.log("Starting countdown...");
 
-    // Start 10-second countdown
-    this.state.countdown = 10;
+    // Normal rooms and linked rooms both show a 10-second countdown. Linked
+    // rooms receive the same target time from the coordinator so both boards
+    // begin their five-minute timer together.
+    const countdownEndsAtMs = gameplayStartsAtMs ?? Date.now() + 10_000;
+    this.state.countdown = Math.max(0, Math.ceil((countdownEndsAtMs - Date.now()) / 1000));
     this.countdownTimer = setInterval(() => {
-      // Explicit assignment so @colyseus/schema always encodes a patch (postfix -- can miss updates in some builds).
-      const next = this.state.countdown - 1;
+      const next = Math.max(0, Math.ceil((countdownEndsAtMs - Date.now()) / 1000));
       this.state.countdown = next;
       if (next <= 0) {
         if (this.countdownTimer) {
           clearInterval(this.countdownTimer);
           this.countdownTimer = null;
         }
-        this.state.timeRemaining = this.GAME_DURATION;
+        this.state.timeRemaining = this.gameDurationSeconds;
         this.gameStartTime = Date.now();
-        this.startGameTimer();
+        const gameEndsAtMs = this.linkedSessionId
+          ? countdownEndsAtMs + this.gameDurationSeconds * 1000
+          : undefined;
+        this.startGameTimer(gameEndsAtMs);
         console.log("Countdown complete — game timer started!");
       }
     }, 1000);
@@ -979,16 +1090,21 @@ export class GameRoom extends Room<GameState> {
     }
   }
 
-  private startGameTimer() {
+  private startGameTimer(gameEndsAtMs?: number) {
     this.gameTimer = setInterval(() => {
-      if (this.isDevMode) {
+      if (gameEndsAtMs) {
+        // Linked rooms use an absolute end time. If one interval ticks a few
+        // milliseconds late, both rooms still display the same remaining time.
+        const remainingMs = gameEndsAtMs - Date.now();
+        this.state.timeRemaining = remainingMs > 0 ? Math.ceil(remainingMs / 1000) : 0;
+      } else if (this.isDevMode) {
         this.state.timeRemaining--;
       } else if (this.state.timeRemaining > 0) {
         this.state.timeRemaining--;
       }
 
       // Log score snapshot every 30 seconds for replay
-      const elapsed = this.GAME_DURATION - this.state.timeRemaining;
+      const elapsed = this.gameDurationSeconds - this.state.timeRemaining;
       if (elapsed > 0 && elapsed % 30 === 0) {
         const scoreSnapshot: Record<string, unknown> = { e: "score", total: this.state.totalScore };
         this.state.players.forEach((p, sessionId) => {
@@ -998,12 +1114,16 @@ export class GameRoom extends Room<GameState> {
       }
 
       if (this.state.timeRemaining <= 0 && !this.state.isGameOver && !this.isDevMode) {
-        this.endGame();
+        void this.endGame();
       }
     }, 1000);
   }
 
   private async endGame() {
+    if (this.isEndingGame) return;
+    this.isEndingGame = true;
+    this.state.timeRemaining = 0;
+
     if (this.gameTimer) {
       clearInterval(this.gameTimer);
       this.gameTimer = null;
@@ -1023,12 +1143,16 @@ export class GameRoom extends Room<GameState> {
     ]);
 
     this.state.isGameOver = true;
+    this.state.timeRemaining = 0;
+    this.broadcast("gameOver", { timeRemaining: 0 });
 
     console.log("Game ended! Final score:", this.state.highScore);
 
     await this.endPolarWindsSession();
 
-    // Dispose the room after game ends
+    // Give the final state patch and explicit gameOver message a short window
+    // to reach clients before closing the websocket.
+    await new Promise(resolve => setTimeout(resolve, this.FINAL_STATE_DISCONNECT_DELAY_MS));
     this.disconnect();
   }
 

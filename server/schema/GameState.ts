@@ -50,6 +50,19 @@ export class GridCell extends Schema {
 }
 
 export class GameState extends Schema {
+  // Linked-session fields are empty for normal games. When two GameRooms are
+  // paired together, clients use these labels to show which board belongs to
+  // Team A or Team B without changing any board/scoring data.
+  @type("string") linkedSessionId: string = "";
+
+  @type("string") linkedTeamId: string = "";
+
+  @type("string") linkedTeamLabel: string = "";
+
+  @type("string") linkedOpponentRoomId: string = "";
+
+  @type("number") gameDurationSeconds: number = 30 * 60;
+
   @type("number") gridWidth: number = 10;
   @type("number") gridHeight: number = 8;
 

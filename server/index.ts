@@ -11,11 +11,18 @@ import cors from "cors";
 import { join, dirname } from "path";
 import { writeFileSync } from "fs";
 import { fileURLToPath } from "url";
+import { randomUUID } from "crypto";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 import { GameRoom } from "./rooms/GameRoom";
 import { parseUnrealExport } from "./config/LevelSpec";
+import {
+  LINKED_SESSION_DURATION_SECONDS,
+  LINKED_TEAM_CONFIGS,
+  getLinkedSessionSnapshot,
+  setLinkedRoomOpponent,
+} from "./rooms/LinkedSessionCoordinator";
 
 const port = Number(process.env.PORT || 2567);
 const app = express();
@@ -100,6 +107,61 @@ app.post("/api/create-colyseus-room", async (req, res) => {
     console.error("Failed to create room:", err);
     return res.status(500).json({ error: err.message });
   }
+});
+
+// Create two GameRoom instances that are tied together by one parent session id.
+// The parent session is just metadata; each child GameRoom still owns its own
+// board, players, scoring, collectibles, and websocket state.
+app.post("/api/create-linked-session", async (_req, res) => {
+  try {
+    const sessionId = randomUUID().slice(0, 8).toUpperCase();
+    const durationSeconds = LINKED_SESSION_DURATION_SECONDS;
+    const teamA = LINKED_TEAM_CONFIGS.A;
+    const teamB = LINKED_TEAM_CONFIGS.B;
+
+    const roomA = await matchMaker.createRoom("game_room", {
+      linkedSessionId: sessionId,
+      linkedTeamId: teamA.teamId,
+      linkedTeamLabel: teamA.teamLabel,
+      allowedColors: teamA.colors,
+      sharedDurationSeconds: durationSeconds,
+    });
+
+    const roomB = await matchMaker.createRoom("game_room", {
+      linkedSessionId: sessionId,
+      linkedTeamId: teamB.teamId,
+      linkedTeamLabel: teamB.teamLabel,
+      allowedColors: teamB.colors,
+      sharedDurationSeconds: durationSeconds,
+    });
+
+    setLinkedRoomOpponent(sessionId, "A", roomB.roomId);
+    setLinkedRoomOpponent(sessionId, "B", roomA.roomId);
+
+    return res.json({
+      success: true,
+      sessionId,
+      durationSeconds,
+      teams: {
+        A: { ...teamA, roomId: roomA.roomId, opponentRoomId: roomB.roomId },
+        B: { ...teamB, roomId: roomB.roomId, opponentRoomId: roomA.roomId },
+      },
+    });
+  } catch (err: any) {
+    console.error("Failed to create linked session:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// Resolve a parent session code back into its two child room ids. Friends use
+// this to join the same two-board match after the creator shares the code.
+app.get("/api/linked-session/:sessionId", (req, res) => {
+  const sessionId = String(req.params.sessionId || "").trim().toUpperCase();
+  const snapshot = getLinkedSessionSnapshot(sessionId);
+  if (!snapshot) {
+    return res.status(404).json({ error: "Linked session not found" });
+  }
+  return res.json({ success: true, ...snapshot });
 });
 
 // Serve the built client (in production or when dist exists)

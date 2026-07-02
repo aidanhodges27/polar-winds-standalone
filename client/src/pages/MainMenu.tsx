@@ -8,11 +8,38 @@ import { Users, Swords, LogIn } from "lucide-react";
 
 const NAME_STORAGE_KEY = "pw-player-name";
 
+type LinkedTeamId = "A" | "B";
+
+interface LinkedSessionResponse {
+  success: boolean;
+  sessionId: string;
+  durationSeconds: number;
+  teams: {
+    A: { roomId: string };
+    B: { roomId: string };
+  };
+}
+
+function getServerUrls() {
+  const serverUrl =
+    import.meta.env.VITE_SERVER_URL ||
+    (import.meta.env.DEV
+      ? "ws://localhost:2567"
+      : `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}`);
+
+  // The websocket URL connects to Colyseus. The HTTP URL hits the small Express
+  // endpoints that create and look up linked sessions.
+  const apiBaseUrl = serverUrl.replace(/^wss:/, "https:").replace(/^ws:/, "http:");
+
+  return { serverUrl, apiBaseUrl };
+}
+
 const MainMenu = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [playerName, setPlayerName] = useState("");
   const [joinRoomId, setJoinRoomId] = useState("");
+  const [isCreatingLinkedSession, setIsCreatingLinkedSession] = useState(false);
 
   // Remember the player's name across sessions (no auth in standalone build).
   useEffect(() => {
@@ -21,6 +48,18 @@ const MainMenu = () => {
   }, []);
 
   const resolvedName = playerName.trim();
+
+  const createBasePayload = (soloMode: boolean, roomId?: string): GameInitPayload => {
+    const { serverUrl } = getServerUrls();
+    return {
+      serverUrl,
+      userId: crypto.randomUUID(),
+      playerName: resolvedName,
+      isAdmin: false,
+      soloMode,
+      roomId,
+    };
+  };
 
   // Create a fresh room (solo or multiplayer), or join an existing one by its
   // Colyseus room id. roomId === undefined → client.create; otherwise joinById.
@@ -36,23 +75,7 @@ const MainMenu = () => {
     }
     localStorage.setItem(NAME_STORAGE_KEY, name);
 
-    // Same-origin by default: in a combined (single-instance) deploy the client
-    // is served by the Colyseus server, so connect back to the host it loaded
-    // from. VITE_SERVER_URL overrides this (e.g. split client/server deploys);
-    // in local dev fall back to the standalone server port.
-    const serverUrl =
-      import.meta.env.VITE_SERVER_URL ||
-      (import.meta.env.DEV
-        ? "ws://localhost:2567"
-        : `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}`);
-    const initPayload: GameInitPayload = {
-      serverUrl,
-      userId: crypto.randomUUID(),
-      playerName: name,
-      isAdmin: false,
-      soloMode,
-      roomId,
-    };
+    const initPayload = createBasePayload(soloMode, roomId);
     navigate("/play", { state: { initPayload } });
   };
 
@@ -62,6 +85,79 @@ const MainMenu = () => {
     const id = joinRoomId.trim();
     if (!id) return;
     startGame(false, id);
+  };
+
+  const buildLinkedPayload = (session: LinkedSessionResponse, playerTeamId: LinkedTeamId): GameInitPayload => {
+    const playerRoomId = playerTeamId === "A" ? session.teams.A.roomId : session.teams.B.roomId;
+    const spectatorRoomId = playerTeamId === "A" ? session.teams.B.roomId : session.teams.A.roomId;
+
+    // A linked payload tells the play screen about both child GameRooms. The
+    // player room accepts input; the spectator room is read-only.
+    return {
+      ...createBasePayload(false, playerRoomId),
+      linkedSession: {
+        sessionId: session.sessionId,
+        playerTeamId,
+        playerRoomId,
+        spectatorRoomId,
+        teamARoomId: session.teams.A.roomId,
+        teamBRoomId: session.teams.B.roomId,
+        durationSeconds: session.durationSeconds,
+      },
+    };
+  };
+
+  const handleCreateLinkedSession = async () => {
+    const name = resolvedName;
+    if (!name) {
+      toast({
+        title: "Enter a name",
+        description: "Please enter a player name before starting.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      setIsCreatingLinkedSession(true);
+      localStorage.setItem(NAME_STORAGE_KEY, name);
+      const { apiBaseUrl } = getServerUrls();
+      const response = await fetch(`${apiBaseUrl}/api/create-linked-session`, { method: "POST" });
+      if (!response.ok) throw new Error("Could not create linked session");
+      const session = await response.json() as LinkedSessionResponse;
+      navigate("/play", { state: { initPayload: buildLinkedPayload(session, "A") } });
+    } catch (error) {
+      console.error(error);
+      toast({
+        title: "Team match failed",
+        description: "Could not create the linked two-board session.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsCreatingLinkedSession(false);
+    }
+  };
+
+  const handleJoinLinkedSession = async (teamId: LinkedTeamId) => {
+    const name = resolvedName;
+    const sessionCode = joinRoomId.trim().toUpperCase();
+    if (!name || !sessionCode) return;
+
+    try {
+      localStorage.setItem(NAME_STORAGE_KEY, name);
+      const { apiBaseUrl } = getServerUrls();
+      const response = await fetch(`${apiBaseUrl}/api/linked-session/${encodeURIComponent(sessionCode)}`);
+      if (!response.ok) throw new Error("Linked session not found");
+      const session = await response.json() as LinkedSessionResponse;
+      navigate("/play", { state: { initPayload: buildLinkedPayload(session, teamId) } });
+    } catch (error) {
+      console.error(error);
+      toast({
+        title: "Session not found",
+        description: "Check the team match code and try again.",
+        variant: "destructive",
+      });
+    }
   };
 
   return (
@@ -120,6 +216,17 @@ const MainMenu = () => {
               <Users className="w-5 h-5 shrink-0" aria-hidden />
               Multiplayer
             </Button>
+
+            <Button
+              type="button"
+              onClick={handleCreateLinkedSession}
+              disabled={isCreatingLinkedSession}
+              variant="outline"
+              className="w-full h-14 border border-white/10 bg-white/5 text-white text-lg font-semibold gap-3 hover:bg-white/10 hover:text-white"
+            >
+              <Users className="w-5 h-5 shrink-0" aria-hidden />
+              {isCreatingLinkedSession ? "Creating..." : "Team Match"}
+            </Button>
           </div>
         </section>
 
@@ -156,6 +263,26 @@ const MainMenu = () => {
             >
               <LogIn className="w-5 h-5 shrink-0" aria-hidden />
               <span className="text-sm font-semibold">Join</span>
+            </Button>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              type="button"
+              onClick={() => handleJoinLinkedSession("A")}
+              disabled={!joinRoomId.trim() || !resolvedName}
+              variant="outline"
+              className="h-12 border border-white/10 bg-white/5 text-white hover:bg-white/10 hover:text-white"
+            >
+              Join Team A
+            </Button>
+            <Button
+              type="button"
+              onClick={() => handleJoinLinkedSession("B")}
+              disabled={!joinRoomId.trim() || !resolvedName}
+              variant="outline"
+              className="h-12 border border-white/10 bg-white/5 text-white hover:bg-white/10 hover:text-white"
+            >
+              Join Team B
             </Button>
           </div>
         </section>

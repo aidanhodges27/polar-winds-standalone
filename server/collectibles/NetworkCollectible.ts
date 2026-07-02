@@ -131,6 +131,8 @@ export class NetworkCollectible extends BaseCollectible {
     return networksInComponent.length >= 2;
   }
 
+  // The only new condition to gold a network collectible is that the endpoints of a network must be a network collectible.
+  // In other words, you cannot have a network collectible in the middle of a network, the collectible must be at the ends.
   isGold(context: CollectibleScoreContext): boolean {
     if (!this.isActivated(context)) return false;
 

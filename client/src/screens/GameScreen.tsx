@@ -181,12 +181,22 @@ const get2DCameraPosition = (gridWidth: number, gridHeight: number): [number, nu
   return [0, height, 0];
 };
 
-// Calculates the target ortho zoom to fit the board in the viewport
-const calcBoardZoom = (gridWidth: number, gridHeight: number, spacing: number, viewportHeight: number) => {
-  const boardSize = Math.max(gridWidth, gridHeight) * spacing;
-  if (boardSize === 0) return 1000;
+// Calculates the target ortho zoom to fit the board in the current canvas.
+const calcBoardZoom = (
+  gridWidth: number,
+  gridHeight: number,
+  spacing: number,
+  viewportWidth: number,
+  viewportHeight: number,
+) => {
+  const boardWidth = gridWidth * spacing;
+  const boardHeight = gridHeight * spacing;
+  if (boardWidth === 0 || boardHeight === 0) return 1000;
   const padding = 1.3;
-  return viewportHeight / (boardSize * padding);
+  return Math.min(
+    viewportWidth / (boardWidth * padding),
+    viewportHeight / (boardHeight * padding),
+  );
 };
 
 // Sets camera position + zoom once on first valid data,
@@ -202,18 +212,19 @@ const SmoothZoom = ({
 }) => {
   const { camera, size } = useThree();
   const initialized = useRef(false);
-  const prevGrid = useRef({ w: 0, h: 0, vh: 0 });
+  const prevGrid = useRef({ w: 0, h: 0, vw: 0, vh: 0 });
 
   useFrame(() => {
-    if (size.height === 0 || gridWidth <= 0 || gridHeight <= 0) return;
+    if (size.width === 0 || size.height === 0 || gridWidth <= 0 || gridHeight <= 0) return;
     const ortho = camera as THREE.OrthographicCamera;
-    const zoom = calcBoardZoom(gridWidth, gridHeight, spacing, size.height);
+    const zoom = calcBoardZoom(gridWidth, gridHeight, spacing, size.width, size.height);
     if (!isFinite(zoom) || zoom <= 0) return;
 
     const needsUpdate =
       !initialized.current ||
       gridWidth !== prevGrid.current.w ||
       gridHeight !== prevGrid.current.h ||
+      size.width !== prevGrid.current.vw ||
       size.height !== prevGrid.current.vh;
 
     if (!needsUpdate) return;
@@ -226,7 +237,7 @@ const SmoothZoom = ({
     ortho.zoom = zoom;
     ortho.updateProjectionMatrix();
 
-    prevGrid.current = { w: gridWidth, h: gridHeight, vh: size.height };
+    prevGrid.current = { w: gridWidth, h: gridHeight, vw: size.width, vh: size.height };
     initialized.current = true;
   });
 
@@ -406,6 +417,12 @@ interface GameScreenProps {
   onBgMusicVolumeChange?: (volume: number) => void;
   onGameAbandoned?: () => void;
   challengeName?: string;
+  /** Panel layout is used by linked sessions where two GameRooms share one screen. */
+  layout?: "full" | "panel";
+  /** Short board label shown when two boards are displayed together. */
+  boardTitle?: string;
+  /** Color/team hint shown under the board label in linked-session mode. */
+  boardSubtitle?: string;
 }
 
 /** Horizontal slider styled to match the in-game score bar (cyan frame + navy→white gradient fill). */
@@ -509,6 +526,9 @@ export const GameScreen = ({
   onBgMusicVolumeChange,
   onGameAbandoned,
   challengeName,
+  layout = "full",
+  boardTitle,
+  boardSubtitle,
 }: GameScreenProps) => {
   const { play: playSound, sfxVolume, setSfxVolume } = useSounds();
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -1231,7 +1251,10 @@ export const GameScreen = ({
   };
 
   return (
-    <div className="isolate w-full h-screen relative overflow-hidden bg-canvas">
+    <div className={cn(
+      "isolate w-full relative overflow-hidden bg-canvas",
+      layout === "panel" ? "h-full min-h-[50dvh]" : "h-screen",
+    )}>
       {/* Cloud nebula backdrop is rendered inside the R3F Canvas (NebulaBackdrop). */}
       <div
         className="pointer-events-none absolute inset-0 z-0 bg-gradient-to-t from-canvas/25 via-transparent to-transparent"
@@ -1317,6 +1340,21 @@ export const GameScreen = ({
           }
         }
       `}</style>
+
+      {boardTitle && (
+        <div className="pointer-events-none absolute right-4 top-4 z-20 max-w-[min(13rem,calc(50vw-2rem))] rounded-none border border-solid bg-canvas/55 px-3 py-2 text-right shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] ring-1 ring-inset ring-white/[0.06] backdrop-blur-[4px]" style={{ borderColor: POLAR_HUD.border }}>
+          <HudCornerLs />
+          <div className="relative z-[1]">
+            <p className="font-montreal text-[10px] font-semibold uppercase leading-tight tracking-[0.16em] text-white">{boardTitle}</p>
+            {boardSubtitle && (
+              <p className="mt-1 font-montreal text-[9px] uppercase leading-tight tracking-[0.1em] text-slate-300">{boardSubtitle}</p>
+            )}
+            {isSpectator && (
+              <p className="mt-1 font-montreal text-[9px] uppercase leading-tight tracking-[0.1em] text-sky-300">Watching</p>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* HUD: frosted polar chrome (match timer / stage chips); settings swap into same shell */}
       <div className="absolute left-4 top-4 z-20 flex w-[min(11.5rem,calc(100vw-2rem))] flex-col gap-2">
@@ -1433,6 +1471,9 @@ export const GameScreen = ({
           {!settingsOpen && (
             <>
           {isSoloMode ? (
+            // This is the upper left info block when in Solo Mode.
+            // The first definition is for the settings, which is invisible until you press the settings button.
+            // The second definition below is for the default box that you see by default. 
             <>
               <div className="relative z-10 flex w-full shrink-0 flex-col gap-3 px-3 py-3">
                 <div className="grid min-w-0 gap-1">
@@ -1500,6 +1541,7 @@ export const GameScreen = ({
               </div>
             </>
           ) : (
+            // This code is for the upper left info box in Multiplayer (or the new Team Match) Mode.
             <div className="relative z-10 flex w-full shrink-0 flex-col gap-3 px-3 py-3">
               <div className="grid min-w-0 gap-1">
                 <p className="font-montreal text-[9px] uppercase leading-none tracking-[0.12em] text-slate-500">
@@ -2152,7 +2194,7 @@ export const GameScreen = ({
           makeDefault
           position={get2DCameraPosition(gridWidth, gridHeight)}
           rotation={[-Math.PI / 2, 0, 0]}
-          zoom={calcBoardZoom(gridWidth, gridHeight, SPACING, window.innerHeight)}
+          zoom={1}
         />
 
         <SmoothZoom

@@ -19,6 +19,18 @@ export interface GameInitPayload {
    * Colyseus server so transcripts and other per-session artifacts key off
    * the DB row UUID, not the transient Colyseus room id. */
   sessionId?: string;
+  /** A linked session is one match that contains two Colyseus GameRooms.
+   * The local player joins `playerRoomId` normally and joins
+   * `spectatorRoomId` read-only so both boards can be shown together. */
+  linkedSession?: {
+    sessionId: string;
+    playerTeamId: "A" | "B";
+    playerRoomId: string;
+    spectatorRoomId: string;
+    teamARoomId: string;
+    teamBRoomId: string;
+    durationSeconds: number;
+  };
 }
 
 const RETURN_URL_KEY = "pw_return_url";
