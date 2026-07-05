@@ -199,8 +199,7 @@ const calcBoardZoom = (
   );
 };
 
-// Sets camera position + zoom once on first valid data,
-// then snaps zoom on grid dimension changes (stage-up).
+// Keeps the camera fitted to the board whenever the canvas or board size changes.
 const SmoothZoom = ({
   gridWidth,
   gridHeight,
@@ -210,15 +209,40 @@ const SmoothZoom = ({
   gridHeight: number;
   spacing: number;
 }) => {
-  const { camera, size } = useThree();
+  const { camera, size, gl, setSize } = useThree();
   const initialized = useRef(false);
   const prevGrid = useRef({ w: 0, h: 0, vw: 0, vh: 0 });
+  const settleFramesLeft = useRef(30); // The amount of frames left to wait until the canvas size is settled
+
+  const applyCameraFit = (viewportWidth: number, viewportHeight: number) => { 
+    if (viewportWidth === 0 || viewportHeight === 0 || gridWidth <= 0 || gridHeight <= 0) return false; // Skip until both the canvas and board have usable sizes.
+    const ortho = camera as THREE.OrthographicCamera;
+    if (!ortho.isOrthographicCamera) return false;
+    const zoom = calcBoardZoom(gridWidth, gridHeight, spacing, viewportWidth, viewportHeight);
+    if (!isFinite(zoom) || zoom <= 0) return false; // Ignore impossible zoom values so we do not break the projection.
+    const pos = get2DCameraPosition(gridWidth, gridHeight); // Find the top-down camera position for this board size.
+    ortho.position.set(pos[0], pos[1], pos[2]);
+    ortho.rotation.set(-Math.PI / 2, 0, 0);
+    ortho.zoom = zoom;
+    ortho.updateProjectionMatrix();
+    prevGrid.current = { w: gridWidth, h: gridHeight, vw: viewportWidth, vh: viewportHeight };
+    initialized.current = true;
+    return true;
+  };
 
   useFrame(() => {
-    if (size.width === 0 || size.height === 0 || gridWidth <= 0 || gridHeight <= 0) return;
-    const ortho = camera as THREE.OrthographicCamera;
-    const zoom = calcBoardZoom(gridWidth, gridHeight, spacing, size.width, size.height);
-    if (!isFinite(zoom) || zoom <= 0) return;
+    if (settleFramesLeft.current > 0) { // For the first few frames, protect against R3F having a stale canvas measurement.
+      const measuredElement = gl.domElement.parentElement;
+      const rect = measuredElement?.getBoundingClientRect();
+      if (rect && rect.width > 0 && rect.height > 0) { 
+        const widthChanged = Math.abs(rect.width - size.width) > 0.5;
+        const heightChanged = Math.abs(rect.height - size.height) > 0.5;
+        const offsetChanged = Math.abs(rect.top - size.top) > 0.5 || Math.abs(rect.left - size.left) > 0.5;
+        if (widthChanged || heightChanged || offsetChanged) setSize(rect.width, rect.height, rect.top, rect.left);
+        if (applyCameraFit(rect.width, rect.height)) settleFramesLeft.current -= 1;
+      }
+    }
+    if (size.width === 0 || size.height === 0 || gridWidth <= 0 || gridHeight <= 0) return; // Stop here until R3F also has a usable stored size.
 
     const needsUpdate =
       !initialized.current ||
@@ -229,16 +253,7 @@ const SmoothZoom = ({
 
     if (!needsUpdate) return;
 
-    // Position camera directly above the board center, looking straight down
-    const pos = get2DCameraPosition(gridWidth, gridHeight);
-    ortho.position.set(pos[0], pos[1], pos[2]);
-    // Set rotation explicitly for top-down view (avoid lookAt gimbal lock)
-    ortho.rotation.set(-Math.PI / 2, 0, 0);
-    ortho.zoom = zoom;
-    ortho.updateProjectionMatrix();
-
-    prevGrid.current = { w: gridWidth, h: gridHeight, vw: size.width, vh: size.height };
-    initialized.current = true;
+    applyCameraFit(size.width, size.height); // Fit from R3F's normal size when it changes later, such as on a stage-up or window resize.
   });
 
   return null;
