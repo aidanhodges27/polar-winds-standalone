@@ -410,17 +410,23 @@ export class GameRoom extends Room<GameState> {
       }
     });
 
-    // Handle ping - just broadcast to all clients, don't store in state
+    // Handle ping - send it only to player clients, and do not save it in game state
+    // Skip ping for spectators so Team Match teams cannot see each other's pings.
+    // Skip the sender because the sender also gets their own copy below.
     this.onMessage("ping", (client, message: PingMessage) => {
       const player = this.state.players.get(client.sessionId);
       if (!player) return;
 
-      // Broadcast to all clients (excluding sender)
-      this.broadcast("ping", {
-        x: message.x,
-        y: message.y,
-        color: player.color
-      }, { except: client });
+      this.clients.forEach((roomClient) => {
+        const isSpectatorClient = this.spectatorSessionIds.has(roomClient.sessionId);
+        if (isSpectatorClient) return; 
+        if (roomClient.sessionId === client.sessionId) return;
+        roomClient.send("ping", {
+          x: message.x,
+          y: message.y,
+          color: player.color
+        });
+      });
 
       // Also send back to the sender
       client.send("ping", {

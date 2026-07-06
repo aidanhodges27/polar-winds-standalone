@@ -253,7 +253,8 @@ const SmoothZoom = ({
 
     if (!needsUpdate) return;
 
-    applyCameraFit(size.width, size.height); // Fit from R3F's normal size when it changes later, such as on a stage-up or window resize.
+    // Fit from R3F's normal size when it changes later, such as on a stage-up or window resize.
+    applyCameraFit(size.width, size.height);
   });
 
   return null;
