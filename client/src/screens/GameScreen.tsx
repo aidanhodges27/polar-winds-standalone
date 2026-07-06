@@ -563,6 +563,8 @@ export const GameScreen = ({
   const [hasVotedClearBoard, setHasVotedClearBoard] = useState(false);
   const [abandonVoteActive, setAbandonVoteActive] = useState(false);
   const [abandonVoteCount, setAbandonVoteCount] = useState(0);
+  // Store the server-provided abandon vote requirement so linked games can show 1/6 instead of just 1 voted.
+  const [abandonRequiredVotes, setAbandonRequiredVotes] = useState(0);
   const [abandonExpiresAt, setAbandonExpiresAt] = useState<number | null>(null);
   const [abandonInitiatorColor, setAbandonInitiatorColor] = useState<PlayerColor | null>(null);
   const [abandonSecondsLeft, setAbandonSecondsLeft] = useState(0);
@@ -682,6 +684,13 @@ export const GameScreen = ({
       : getPlayerDisplayLabel(abandonInitiatorColor);
   }, [abandonInitiatorColor, players]);
 
+  // Build one reusable label so the HUD and screen-reader text always show the same abandon vote progress.
+  const abandonVoteProgressLabel = abandonRequiredVotes > 0
+    // When the server sends a requirement, show the game-wide fraction such as 4/6 voted.
+    ? `${abandonVoteCount}/${abandonRequiredVotes} voted`
+    // Keep the old wording as a fallback for older server messages that do not include requiredVotes.
+    : `${abandonVoteCount} voted`;
+
   useEffect(() => {
     return () => {
       if (settingsCloseTimerRef.current != null) {
@@ -771,10 +780,13 @@ export const GameScreen = ({
       toast.success("Board cleared!");
     };
 
-    const handleAbandonVoteStarted = (message: { initiatorColor: string; expiresAt: number }) => {
+    const handleAbandonVoteStarted = (message: { initiatorColor: string; expiresAt: number; voteCount?: number; requiredVotes?: number }) => {
       setAbandonVoteActive(true);
       setAbandonExpiresAt(message.expiresAt);
-      setAbandonVoteCount(1);
+      // Use the server count when available, while keeping 1 as the legacy first-vote fallback.
+      setAbandonVoteCount(message.voteCount ?? 1);
+      // Store the server requirement so linked games can show the full six-player vote target.
+      setAbandonRequiredVotes(message.requiredVotes ?? 0);
       setAbandonInitiatorColor(message.initiatorColor as PlayerColor);
       setAbandonExpiredVisible(false);
       if (abandonExpiredTimerRef.current) {
@@ -789,8 +801,10 @@ export const GameScreen = ({
       }, 2200);
     };
 
-    const handleAbandonVoteUpdate = (message: { voterColor: string; voteCount: number }) => {
+    const handleAbandonVoteUpdate = (message: { voterColor: string; voteCount: number; requiredVotes?: number }) => {
       setAbandonVoteCount(message.voteCount);
+      // Refresh the requirement on every update because the server is the authority for the threshold.
+      setAbandonRequiredVotes(message.requiredVotes ?? 0);
       playSound("vote");
     };
 
@@ -798,6 +812,8 @@ export const GameScreen = ({
       setAbandonVoteActive(false);
       setAbandonExpiresAt(null);
       setAbandonVoteCount(0);
+      // Clear the displayed requirement when there is no active abandon vote.
+      setAbandonRequiredVotes(0);
       setAbandonInitiatorColor(null);
       setHasVotedAbandon(false);
       setAbandonExpiredVisible(true);
@@ -812,6 +828,8 @@ export const GameScreen = ({
       setAbandonVoteActive(false);
       setAbandonExpiresAt(null);
       setAbandonVoteCount(0);
+      // Clear the displayed requirement when the game has already been abandoned.
+      setAbandonRequiredVotes(0);
       setAbandonInitiatorColor(null);
       setHasVotedAbandon(false);
       playSound("abandon");
@@ -925,6 +943,8 @@ export const GameScreen = ({
         setAbandonVoteActive(false);
         setAbandonExpiresAt(null);
         setAbandonVoteCount(0);
+        // Clear the displayed requirement when the local countdown reaches zero before a server expiry message arrives.
+        setAbandonRequiredVotes(0);
         setAbandonInitiatorColor(null);
         setHasVotedAbandon(false);
         setAbandonSecondsLeft(0);
@@ -1878,7 +1898,8 @@ export const GameScreen = ({
       )}
 
       {/* Abandon-game vote banner — top center, fades quickly (red) */}
-      {!isSoloMode && abandonBannerVisible && abandonInitiatorColor && (
+      {/* Only the player's own board shows this banner so linked-session screens do not display the same notice twice. */}
+      {!isSpectator && !isSoloMode && abandonBannerVisible && abandonInitiatorColor && (
         <div
           key={abandonExpiresAt ?? "abandon-banner"}
           role="status"
@@ -2080,7 +2101,7 @@ export const GameScreen = ({
                 </p>
                 <div className="mt-2 flex items-end justify-between gap-2">
                   <p className="font-montreal text-[10px] uppercase leading-tight tracking-[0.14em] text-slate-400">
-                    {abandonVoteCount} voted
+                    {abandonVoteProgressLabel}
                   </p>
                   <p className="font-montreal text-2xl font-bold tabular-nums leading-none tracking-[-0.03em] text-white">
                     {abandonSecondsLeft}s
@@ -2107,7 +2128,7 @@ export const GameScreen = ({
               isSoloMode
                 ? "Abandon game and exit"
                 : abandonVoteActive
-                  ? `Abandon vote, ${abandonVoteCount} players voted`
+                  ? `Abandon vote, ${abandonVoteProgressLabel}`
                   : hasVotedAbandon
                     ? "Abandon vote submitted"
                     : "Vote to abandon the match"
@@ -2138,7 +2159,7 @@ export const GameScreen = ({
               {isSoloMode
                 ? "Abandon game"
                 : abandonVoteActive
-                  ? `${abandonVoteCount} voted`
+                  ? abandonVoteProgressLabel
                   : hasVotedAbandon
                     ? "Voted"
                     : "Abandon game"}

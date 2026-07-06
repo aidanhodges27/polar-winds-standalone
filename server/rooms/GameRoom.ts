@@ -13,6 +13,7 @@ import {
   LINKED_TEAM_CONFIGS,
   markLinkedRoomReady,
   registerLinkedRoom,
+  submitLinkedAbandonGameVote,
   unregisterLinkedRoom,
   type LinkedTeamId,
 } from "./LinkedSessionCoordinator";
@@ -545,6 +546,21 @@ export class GameRoom extends Room<GameState> {
         return;
       }
 
+      // Linked Team Match rooms share one abandon game vote between all 6 players.
+      if (this.linkedSessionId && this.linkedTeamId) {
+        // Send this player's vote to the linked-session coordinator so all six players are counted together.
+        submitLinkedAbandonGameVote({
+          // Pass the parent match code so the coordinator can find the two child GameRooms.
+          sessionId: this.linkedSessionId,
+          // Pass the local team id so the coordinator knows which linked room the vote came from.
+          teamId: this.linkedTeamId,
+          // Use player color as the voter key because each linked player has one unique color across the full game.
+          voterColor: player.color,
+        });
+        
+        return;
+      }
+
       // Check if this player already voted
       if (this.abandonGameVotes.has(client.sessionId)) return;
 
@@ -959,6 +975,26 @@ export class GameRoom extends Room<GameState> {
     // only to the room the player joined as a real player.
     this.linkedOpponentRoomId = roomId;
     this.state.linkedOpponentRoomId = roomId;
+  }
+
+  public getAbandonGameVoteWindowMs(): number {
+    // Let the linked-session coordinator reuse this room's normal abandon vote timeout.
+    return this.ABANDON_GAME_VOTE_WINDOW;
+  }
+
+  public getAbandonGameRequiredVotes(): number {
+    // Count only real player slots, so spectator connections never increase the vote requirement.
+    return this.getActivePlayerSessionIds().length;
+  }
+
+  public broadcastLinkedAbandonGameVote(type: "abandonGameVoteStarted" | "abandonGameVoteUpdate" | "abandonGameVoteExpired", payload: Record<string, unknown>) {
+    // Use the room broadcast so every connected client for this board receives the linked vote update.
+    this.broadcast(type, payload);
+  }
+
+  public async executeLinkedSessionAbandonGame() {
+    // Reuse the normal abandon cleanup so timers, clients, and final state behave the same in linked mode.
+    await this.executeAbandonGame();
   }
 
   private async initializeGame(gameplayStartsAtMs?: number) {
