@@ -54,7 +54,8 @@ type LinkedAbandonVoteMessageType =
   | "abandonGameVoteUpdate"
   | "abandonGameVoteExpired";
 
-export const LINKED_SESSION_DURATION_SECONDS = 5 * 60;
+// The timer for the Team Match game
+export const LINKED_SESSION_DURATION_SECONDS = (1/6) * 60;
 
 export const LINKED_TEAM_CONFIGS: Record<LinkedTeamId, LinkedTeamConfig> = {
   A: {

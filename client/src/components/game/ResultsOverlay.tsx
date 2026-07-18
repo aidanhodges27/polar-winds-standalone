@@ -20,6 +20,8 @@ export interface ResultsOverlayProps {
   scores: Record<PlayerColor, number>;
   soloMode: boolean;
   reason: "gameover" | "abandoned";
+  // This stores the winning team letter, null for a tie, or nothing for a non-team game.
+  winningTeam?: "A" | "B" | null;
   returnUrl?: string | null;
   onBack: () => void;
   players?: PlayerInfo[];
@@ -34,11 +36,28 @@ export const ResultsOverlay = ({
   scores,
   soloMode,
   reason,
+  winningTeam,
   returnUrl,
   onBack,
   players = [],
 }: ResultsOverlayProps) => {
   const [visible, setVisible] = useState(false);
+
+  // This is true only when a completed team match has one team with the higher high score.
+  const hasTeamWinner = reason === "gameover" && (winningTeam === "A" || winningTeam === "B");
+  // This is true only when a completed team match has equal high scores.
+  const isTeamTie = reason === "gameover" && winningTeam === null;
+  // This chooses the correct title for abandoned, won, tied, and regular game results.
+  const resultTitle = reason === "abandoned"
+    ? "Game Abandoned"
+    // This checks whether a team won the completed match if the game wasn't abandoned.
+    : hasTeamWinner
+      ? `Team ${winningTeam} Won`
+      // This checks whether the two team high scores were equal.
+      : isTeamTie
+        ? "Game Tied"
+        // This keeps the normal title for solo and standard multiplayer games.
+        : "Game Over";
 
   useEffect(() => {
     const t = setTimeout(() => setVisible(true), 300);
@@ -74,7 +93,8 @@ export const ResultsOverlay = ({
               id="results-overlay-title"
               className="mt-2 font-montreal text-2xl font-bold tracking-tight text-white"
             >
-              {reason === "abandoned" ? "Game abandoned" : "Game over"}
+              {/* This displays the title chosen from the current game result. */}
+              {resultTitle}
             </h1>
           </header>
 

@@ -717,6 +717,15 @@ const Index = () => {
   }
 
   const linkedSession = initPayload.linkedSession;
+  // This reads Team A's high score from the correct board for either local team.
+  const teamAHighScore = linkedSession?.playerTeamId === "A" ? gameState.highScore : opponentGameState.highScore;
+  // This reads Team B's high score from the correct board for either local team.
+  const teamBHighScore = linkedSession?.playerTeamId === "B" ? gameState.highScore : opponentGameState.highScore;
+  // This starts with no winner when the game is not a team match or both high scores are equal.
+  const winningTeam: "A" | "B" | null = !linkedSession || teamAHighScore === teamBHighScore
+    ? null
+    : teamAHighScore > teamBHighScore ? "A" : "B";
+    
   const renderBoard = (
     boardRoom: Client.Room<ServerGameState> | null,
     boardState: GameStateLocal,
@@ -948,6 +957,7 @@ const Index = () => {
           scores={gameState.scores}
           soloMode={initPayload?.soloMode || false}
           reason={resultsReasonRef.current}
+          winningTeam={linkedSession ? winningTeam : undefined}
           returnUrl={returnUrl}
           players={Array.from(gameState.players.values()).map((p) => ({
             name: p.name,
