@@ -433,12 +433,14 @@ interface GameScreenProps {
   onBgMusicVolumeChange?: (volume: number) => void;
   onGameAbandoned?: () => void;
   challengeName?: string;
-  /** Panel layout is used by linked sessions where two GameRooms share one screen. */
+  // Panel layout is used by linked sessions where two GameRooms share one screen.
   layout?: "full" | "panel";
-  /** Short board label shown when two boards are displayed together. */
+  // Short board label shown when two boards are displayed together.
   boardTitle?: string;
-  /** Color/team hint shown under the board label in linked-session mode. */
+  // Color/team hint shown under the board label in linked-session mode.
   boardSubtitle?: string;
+  // The shared Team Match code replaces the private room code when it is provided.
+  teamMatchCode?: string;
 }
 
 /** Horizontal slider styled to match the in-game score bar (cyan frame + navy→white gradient fill). */
@@ -545,6 +547,7 @@ export const GameScreen = ({
   layout = "full",
   boardTitle,
   boardSubtitle,
+  teamMatchCode,
 }: GameScreenProps) => {
   const { play: playSound, sfxVolume, setSfxVolume } = useSounds();
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -1403,6 +1406,8 @@ export const GameScreen = ({
         >
           <HudCornerLs />
           <div className="relative z-[1] flex min-h-0 flex-col">
+            
+          {/* This is the settings panel when you hit the gear button in the upper left panel. */}
           {settingsOpen && (
             <div className="relative z-30 flex h-9 w-full shrink-0 items-center justify-end border-b border-white/10 bg-canvas/30 px-2">
               <button
@@ -1491,13 +1496,16 @@ export const GameScreen = ({
                   </span>
                 </div>
               </div>
-              {room?.roomId && (
+              {/* Use the shared match code in Team Match, but keep the room code in other modes. */}
+              {(teamMatchCode || room?.roomId) && (
                 <div className="border-t border-white/10 pt-3">
                   <p className="font-montreal text-[10px] uppercase tracking-[0.12em] text-slate-500">
-                    Room code
+                    {/* Change the label so players know which kind of code they are seeing. */}
+                    {teamMatchCode ? "Team Match code" : "Room code"}
                   </p>
                   <p className="mt-1 font-mono text-sm font-semibold tracking-widest text-white">
-                    {room.roomId}
+                    {/* Display the ID for the Game Room or Team Match (which ever is available). */}
+                    {teamMatchCode || room?.roomId}
                   </p>
                 </div>
               )}
@@ -1585,13 +1593,16 @@ export const GameScreen = ({
                 </p>
                 <p className="truncate text-xs font-medium tabular-nums leading-tight text-slate-200">Multiplayer</p>
               </div>
-              {room?.roomId && (
+              {/* Use the shared match code in Team Match, but keep the room code in other modes. */}
+              {(teamMatchCode || room?.roomId) && (
                 <div className="grid min-w-0 gap-1">
                   <p className="font-montreal text-[9px] uppercase leading-none tracking-[0.12em] text-slate-500">
-                    Room code
+                    {/* Change the headline only when this is a Team Match board. */}
+                    {teamMatchCode ? "Team Match code" : "Room code"}
                   </p>
                   <p className="truncate font-mono text-xs font-semibold tracking-widest text-white">
-                    {room.roomId}
+                    {/* Show the safe shared code instead of the private child room ID. */}
+                    {teamMatchCode || room?.roomId}
                   </p>
                 </div>
               )}

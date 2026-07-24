@@ -758,6 +758,7 @@ const Index = () => {
       layout="panel"
       boardTitle={boardTitle}
       boardSubtitle={boardSubtitle}
+      teamMatchCode={linkedSession?.sessionId}
       onGameAbandoned={
         boardIsSpectator
           ? undefined
@@ -766,16 +767,10 @@ const Index = () => {
     />
   );
 
-  // TODO: alter position and move this code to GameScreen.tsx.
-  // Team vs. Team ingame "TEAM MATCH CODE" display box.
   return (
     <div className="relative min-h-dvh w-full bg-canvas text-foreground">
       {linkedSession ? (
         <div className="grid h-dvh w-full grid-cols-1 gap-px bg-sky-950/40 lg:grid-cols-2">
-          <div className="pointer-events-none fixed left-1/2 top-3 z-30 -translate-x-1/2 rounded-none border border-sky-300/35 bg-canvas/70 px-4 py-2 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-[6px]">
-            <p className="font-montreal text-[9px] uppercase leading-tight tracking-[0.16em] text-slate-300">Team Match Code</p>
-            <p className="font-montreal text-sm font-semibold uppercase leading-tight tracking-[0.18em] text-white">{linkedSession.sessionId}</p>
-          </div>
           <section className="relative min-h-[50dvh] min-w-0 overflow-hidden bg-canvas lg:min-h-dvh">
             {renderBoard(
               linkedSession.playerTeamId === "A" ? room : opponentRoom,
