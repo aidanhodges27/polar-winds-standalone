@@ -22,6 +22,8 @@ export interface ResultsOverlayProps {
   reason: "gameover" | "abandoned";
   // This stores the winning team letter, null for a tie, or nothing for a non-team game.
   winningTeam?: "A" | "B" | null;
+  winningTeamHighScore?: number;
+  winningTeamStage?: number;
   returnUrl?: string | null;
   onBack: () => void;
   players?: PlayerInfo[];
@@ -37,6 +39,8 @@ export const ResultsOverlay = ({
   soloMode,
   reason,
   winningTeam,
+  winningTeamHighScore = highScore,
+  winningTeamStage = stage,
   returnUrl,
   onBack,
   players = [],
@@ -85,17 +89,24 @@ export const ResultsOverlay = ({
       >
         <HudCornerLs />
         <div className="relative z-[1]">
+          {/* This is the very top subtext that displays the status of the game (complete or abandoned). */}
           <header className="mb-5 border-b border-white/10 pb-5 text-center">
             <p className="font-montreal text-[9px] font-medium uppercase tracking-[0.14em] text-slate-400">
               {reason === "abandoned" ? "Session status" : "Run complete"}
             </p>
+
+            {/* This displays the winner, or that the game was abandoned. */}
             <h1
               id="results-overlay-title"
               className="mt-2 font-montreal text-2xl font-bold tracking-tight text-white"
             >
-              {/* This displays the title chosen from the current game result. */}
               {resultTitle}
             </h1>
+
+            {/* This is a snippet of the winning team's results. */}
+            <p className="font-montreal text-[12px] font-medium uppercase tracking-[0.14em] text-slate-400">
+              Stage {winningTeamStage} &mdash; {formatScore(winningTeamHighScore)} High Score
+            </p>
           </header>
 
           {/* Draws the box that holds the team scoring details */}

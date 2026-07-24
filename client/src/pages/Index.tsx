@@ -725,6 +725,10 @@ const Index = () => {
   const winningTeam: "A" | "B" | null = !linkedSession || teamAHighScore === teamBHighScore
     ? null
     : teamAHighScore > teamBHighScore ? "A" : "B";
+  // Select the board that belongs to the winner so the result header shows the winning run.
+  const winningTeamState = linkedSession && winningTeam && linkedSession.playerTeamId !== winningTeam
+    ? opponentGameState
+    : gameState;
   
   /*
    * A linked match keeps our team and the opposing team in two separate game
@@ -961,7 +965,7 @@ const Index = () => {
         </div>
       )}
       {showResults && (
-        /* Pass the combined player list into the end-of-game results overlay. */
+        /* Pass information to the end-of-game results overlay. */
         <ResultsOverlay
           totalScore={gameState.totalScore}
           highScore={gameState.highScore}
@@ -970,6 +974,8 @@ const Index = () => {
           soloMode={initPayload?.soloMode || false}
           reason={resultsReasonRef.current}
           winningTeam={linkedSession ? winningTeam : undefined}
+          winningTeamHighScore={winningTeamState.highScore}
+          winningTeamStage={winningTeamState.stage}
           returnUrl={returnUrl}
           players={resultsPlayers}
           onBack={() => {
