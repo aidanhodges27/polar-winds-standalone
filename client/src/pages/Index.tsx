@@ -725,6 +725,22 @@ const Index = () => {
   const winningTeam: "A" | "B" | null = !linkedSession || teamAHighScore === teamBHighScore
     ? null
     : teamAHighScore > teamBHighScore ? "A" : "B";
+  
+  /*
+   * A linked match keeps our team and the opposing team in two separate game
+   * states. Start with our team's players, then add the opposing team's players
+   * when this is a linked match. This allows the results overlay to display
+   * player names instead of falling back to their color name.
+   */
+  const resultsPlayers = [
+    ...gameState.players.values(),
+    ...(linkedSession ? opponentGameState.players.values() : []),
+  ].map((player) => ({
+    name: player.name,
+    school: player.school,
+    discordName: player.discordName,
+    color: player.color,
+  }));
     
   const renderBoard = (
     boardRoom: Client.Room<ServerGameState> | null,
@@ -945,6 +961,7 @@ const Index = () => {
         </div>
       )}
       {showResults && (
+        /* Pass the combined player list into the end-of-game results overlay. */
         <ResultsOverlay
           totalScore={gameState.totalScore}
           highScore={gameState.highScore}
@@ -954,12 +971,7 @@ const Index = () => {
           reason={resultsReasonRef.current}
           winningTeam={linkedSession ? winningTeam : undefined}
           returnUrl={returnUrl}
-          players={Array.from(gameState.players.values()).map((p) => ({
-            name: p.name,
-            school: p.school,
-            discordName: p.discordName,
-            color: p.color,
-          }))}
+          players={resultsPlayers}
           onBack={() => {
             if (returnUrl) {
               window.location.href = returnUrl;
