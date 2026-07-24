@@ -11,7 +11,7 @@ import { PlatformVoiceOverlay } from "@/components/game/PlatformVoiceOverlay";
 import { ResultsOverlay } from "@/components/game/ResultsOverlay";
 import { MilestoneShowcase } from "@/components/game/MilestoneShowcase";
 import { symbolKeyFromName, milestoneAssets, type MilestoneSymbol } from "@/lib/svg3d/assets";
-import type { PlayerColorId } from "@/constants/playerColors";
+import { PLAYER_COLOR_IDS, type PlayerColorId } from "@/constants/playerColors";
 
 /** Build a redirect URL back to the platform with query params */
 function buildReturnUrl(returnUrl: string, params: Record<string, string | number>): string {
@@ -745,6 +745,19 @@ const Index = () => {
     discordName: player.discordName,
     color: player.color,
   }));
+
+  // Record the per-player score contribution so that it can be displayed during the post-game.
+  const resultsScores = { ...gameState.scores };
+  if (linkedSession) {
+    /* An individual player's score from their board will always be higher or equal to 0.
+       From the opponents perspective, this player's score will be stuck at 0 because
+       the opponent does not get updates about per-player contributions.
+       `resultScores` will get a snapshot of updated scores across both boards so the
+       post-game results can show accurate per-player score contributions. */
+    for (const color of PLAYER_COLOR_IDS) {
+      resultsScores[color] = Math.max(gameState.scores[color], opponentGameState.scores[color]);
+    }
+  }
     
   const renderBoard = (
     boardRoom: Client.Room<ServerGameState> | null,
@@ -970,7 +983,7 @@ const Index = () => {
           totalScore={gameState.totalScore}
           highScore={gameState.highScore}
           stage={gameState.stage}
-          scores={gameState.scores}
+          scores={resultsScores}
           soloMode={initPayload?.soloMode || false}
           reason={resultsReasonRef.current}
           winningTeam={linkedSession ? winningTeam : undefined}
