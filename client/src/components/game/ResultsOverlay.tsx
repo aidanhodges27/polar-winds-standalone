@@ -98,27 +98,46 @@ export const ResultsOverlay = ({
             </h1>
           </header>
 
+          {/* Draws the box that holds the team scoring details */}
           <div className="overflow-hidden rounded-none border border-solid ring-1 ring-inset ring-white/[0.04]" style={{ borderColor: POLAR_HUD.border, background: "rgba(255,255,255,0.03)" }}>
+            
+            {/* This is the header right before scores details are listed. */}
+            <header className="relative z-[1]">
+              <h1 className="mt-2 font-montreal text-2x1 font-bold tracking-tight text-white text-center">
+                Your Team Details
+              </h1>
+            </header>
+
+            {/* Scoring details begin here. */}
             <div className="flex items-center justify-between gap-4 border-b border-white/10 px-3.5 py-2.5 sm:px-4 sm:py-3">
               <span className={labelCls}>Score</span>
               <span className="font-montreal text-lg font-bold text-white sm:text-xl">
                 {formatScore(totalScore)}
               </span>
             </div>
-            <div className="flex items-center justify-between gap-4 border-b border-white/10 px-3.5 py-2.5 sm:px-4 sm:py-3">
-              <span className={labelCls}>Stage</span>
-              <span className="font-montreal text-lg font-bold text-white sm:text-xl">{stage}</span>
-            </div>
-            <div className="flex items-center justify-between gap-4 px-3.5 py-2.5 sm:px-4 sm:py-3">
+
+            <div className="flex items-center justify-between gap-4 border-b px-3.5 py-2.5 sm:px-4 sm:py-3">
               <span className={labelCls}>High score</span>
               <span className="font-montreal text-lg font-bold text-white sm:text-xl">
                 {formatScore(highScore)}
               </span>
             </div>
+            
+            <div className="flex items-center justify-between gap-4 border-white/10 px-3.5 py-2.5 sm:px-4 sm:py-3">
+              <span className={labelCls}>Stage</span>
+              <span className="font-montreal text-lg font-bold text-white sm:text-xl">{stage}</span>
+            </div>
+            {/* Scoring details end here. */}
 
+         {/* Finish the first score details box.*/}
+         </div>
+
+         {/* Displays per-player score contributions for gamemodes aside from Solo. */}
             {!soloMode && (
               <div className="border-t border-white/10">
+                
                 {/* Render one results row per playable color, in the shared display order. */}
+                <br></br>
                 {PLAYER_COLOR_IDS.map((color) => {
                   const player = players.find((p) => p.color === color);
                   return (
@@ -142,7 +161,7 @@ export const ResultsOverlay = ({
                 })}
               </div>
             )}
-          </div>
+          
 
           <button
             type="button"

@@ -1380,14 +1380,20 @@ export const GameScreen = ({
         }
       `}</style>
 
+      {/* This is the display board on the upper right during a Team Match.
+          The board title shows the team name (Team A or B).
+          The board subtitle shows the colors of the team (e.g. orange/white/blue).
+          If you are spectating a board, an additional line will appear that indicates you are a watcher. */}
       {boardTitle && (
         <div className="pointer-events-none absolute right-4 top-4 z-20 max-w-[min(13rem,calc(50vw-2rem))] rounded-none border border-solid bg-canvas/55 px-3 py-2 text-right shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] ring-1 ring-inset ring-white/[0.06] backdrop-blur-[4px]" style={{ borderColor: POLAR_HUD.border }}>
           <HudCornerLs />
           <div className="relative z-[1]">
             <p className="font-montreal text-[10px] font-semibold uppercase leading-tight tracking-[0.16em] text-white">{boardTitle}</p>
+
             {boardSubtitle && (
               <p className="mt-1 font-montreal text-[9px] uppercase leading-tight tracking-[0.1em] text-slate-300">{boardSubtitle}</p>
             )}
+            
             {isSpectator && (
               <p className="mt-1 font-montreal text-[9px] uppercase leading-tight tracking-[0.1em] text-sky-300">Watching</p>
             )}
