@@ -988,24 +988,34 @@ export const GameScreen = ({
     };
   }, []);
 
-  // Initialize predicted position when we know our player
+  // A reconnect gives the room a new Colyseus session id while this component
+  // remains mounted. Discard predictions belonging to the previous connection
+  // so they cannot override the newly hydrated authoritative player position.
   useEffect(() => {
-    if (players.size > 0 && !predictedPos) {
-      if (isSoloMode) {
-        // In solo mode, use the active player's position
-        const playerArray = Array.from(players.values());
-        if (playerArray[activePlayerIndex]) {
-          setPredictedPos({ x: playerArray[activePlayerIndex].x, y: playerArray[activePlayerIndex].y });
-        }
-      } else if (myColor) {
-        // In multiplayer, use our player's position
-        const localPlayer = Array.from(players.values()).find(p => p.color === myColor);
-        if (localPlayer) {
-          setPredictedPos({ x: localPlayer.x, y: localPlayer.y });
-        }
+    pendingInputsRef.current.clear();
+    setPredictedPos(null);
+  }, [room?.sessionId, myColor, isSoloMode]);
+
+  // Rebase prediction onto authoritative state whenever there is nothing left
+  // for the server to acknowledge. This initializes late joiners and also
+  // repairs any drift caused by reconnects or server-side corrections.
+  useEffect(() => {
+    if (pendingInputsRef.current.size !== 0) return;
+
+    const playerArray = Array.from(players.values());
+    const authoritativePlayer = isSoloMode
+      ? playerArray[activePlayerIndex]
+      : playerArray.find((player) => player.color === myColor);
+
+    if (!authoritativePlayer) return;
+
+    setPredictedPos((current) => {
+      if (current?.x === authoritativePlayer.x && current?.y === authoritativePlayer.y) {
+        return current;
       }
-    }
-  }, [myColor, players, isSoloMode, predictedPos, activePlayerIndex]);
+      return { x: authoritativePlayer.x, y: authoritativePlayer.y };
+    });
+  }, [players, myColor, isSoloMode, activePlayerIndex, room?.sessionId]);
 
   // Reset prediction when switching players in solo mode (only on activePlayerIndex change)
   const prevActivePlayerIndexRef = useRef(activePlayerIndex);

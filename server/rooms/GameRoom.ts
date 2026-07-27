@@ -324,9 +324,6 @@ export class GameRoom extends Room<GameState> {
 
     // Handle player movement
     this.onMessage("move", (client, message: MoveMessage) => {
-      if (this.state.countdown > 0 || this.state.isGameOver) return;
-      if (!this.isDevMode && this.state.gameStarted && this.state.timeRemaining <= 0) return;
-
       // In solo mode with targetColor, move the specified color's player
       let player: Player | undefined;
       let playerKey: string | undefined;
@@ -345,6 +342,24 @@ export class GameRoom extends Room<GameState> {
       }
 
       if (!player || !playerKey) return;
+
+      // Always acknowledge a sequenced move once its player has been resolved.
+      // Otherwise a move received on a countdown/game-over boundary remains in
+      // the client's pending-input queue forever and prevents reconciliation.
+      const acknowledgeMove = () => {
+        if (message.seq !== undefined) {
+          client.send("moveAck", { seq: message.seq, x: player!.x, y: player!.y });
+        }
+      };
+
+      if (this.state.countdown > 0 || this.state.isGameOver) {
+        acknowledgeMove();
+        return;
+      }
+      if (!this.isDevMode && this.state.gameStarted && this.state.timeRemaining <= 0) {
+        acknowledgeMove();
+        return;
+      }
 
       const { direction } = message;
       let newX = player.x;
@@ -406,9 +421,7 @@ export class GameRoom extends Room<GameState> {
       }
 
       // Send acknowledgment with final position (for client-side prediction reconciliation)
-      if (message.seq !== undefined) {
-        client.send("moveAck", { seq: message.seq, x: player.x, y: player.y });
-      }
+      acknowledgeMove();
     });
 
     // Handle ping - send it only to player clients, and do not save it in game state
