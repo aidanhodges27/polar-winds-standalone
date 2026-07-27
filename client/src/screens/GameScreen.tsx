@@ -1,36 +1,36 @@
-import { Component, useEffect, useMemo, useRef, useState } from "react";
-import type { ErrorInfo, ReactNode } from "react";
-import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { OrthographicCamera } from "@react-three/drei";
-import * as Client from "colyseus.js";
-import { toast } from "sonner";
-import { Bloom, EffectComposer } from "@react-three/postprocessing";
-import * as THREE from "three";
-import { Player } from "@/components/Player";
 import { ParticleFloor } from "@/components/ParticleFloor";
+import { Player } from "@/components/Player";
+import { OrthographicCamera } from "@react-three/drei";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { Bloom, EffectComposer } from "@react-three/postprocessing";
+import * as Client from "colyseus.js";
+import type { ErrorInfo, ReactNode } from "react";
+import { Component, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
+import * as THREE from "three";
 
-import { CubeFrame } from "@/components/CubeFrame";
-import { Hand } from "@/components/Hand";
-import { EquilateralTriangle } from "@/components/EquilateralTriangle";
-import { Compass } from "@/components/Compass";
-import { GalaxyModel } from "@/components/GalaxyModel";
-import { Polyomino } from "@/components/Polyomino";
-import { GoldAura } from "@/components/GoldAura";
-import { PulseRipple } from "@/components/game/PulseRipple";
-import { FloatingScore } from "@/components/FloatingScore";
 import { ClickHandler } from "@/components/ClickHandler";
-import { LambdaSymbol } from "@/components/LambdaSymbol";
+import { Compass } from "@/components/Compass";
+import { CubeFrame } from "@/components/CubeFrame";
 import { EnemyEntity } from "@/components/EnemyEntity";
-import { Info, Scale, Settings, Volume2, VolumeX, X } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { EquilateralTriangle } from "@/components/EquilateralTriangle";
+import { FloatingScore } from "@/components/FloatingScore";
+import { GalaxyModel } from "@/components/GalaxyModel";
+import { GoldAura } from "@/components/GoldAura";
+import { Hand } from "@/components/Hand";
+import { LambdaSymbol } from "@/components/LambdaSymbol";
+import { Polyomino } from "@/components/Polyomino";
+import { PulseRipple } from "@/components/game/PulseRipple";
 import { useSounds } from "@/hooks/use-sounds";
+import { cn } from "@/lib/utils";
+import { Info, Settings, Volume2, VolumeX, X } from "lucide-react";
 // Removed: PolarAmbientParticlesCanvas, NoiseBlobFieldCanvas — hidden behind opaque R3F canvas, wasted WebGL contexts
-import { HudCornerLs, POLAR_HUD } from "@/components/ui/polar-chrome";
-import { NoiseFieldOverlay, type NoiseFieldHandle } from "@/components/game/NoiseFieldOverlay";
-import { StageAnnouncement } from "@/components/game/StageAnnouncement";
 import { DevStageControls } from "@/components/game/DevStageControls";
 import { GameControls } from "@/components/game/GameControls";
 import { NebulaBackdrop } from "@/components/game/NebulaBackdrop";
+import { NoiseFieldOverlay, type NoiseFieldHandle } from "@/components/game/NoiseFieldOverlay";
+import { StageAnnouncement } from "@/components/game/StageAnnouncement";
+import { HudCornerLs, POLAR_HUD } from "@/components/ui/polar-chrome";
 import {
   getFloorTint,
   getPlayerDisplayLabel,
@@ -651,6 +651,19 @@ export const GameScreen = ({
   );
   const highScoreBarPercent = Math.min(
     (highScore / (currentStageThreshold || 1)) * 100,
+    100,
+  );
+
+  const isTeamMatch = Boolean(teamMatchCode);
+
+  const teamMatchPieceColors = useMemo(() => {
+    const seen = new Set<PlayerColor>();
+    for (const p of players.values()) seen.add(p.color);
+    return Array.from(seen).slice(0, 3);
+  }, [players]);
+
+  const teamMatchPercent = Math.min(
+    (totalScore / Math.max(currentStageThreshold || 1, 1)) * 100,
     100,
   );
 
@@ -1704,203 +1717,294 @@ export const GameScreen = ({
 
       {/* Right side: stage target, vertical meter, high score marker, current below bar */}
       <div className="absolute right-4 top-1/2 z-10 max-h-[calc(100vh-2rem)] -translate-y-1/2 sm:right-6">
-        <aside
-          className="flex w-auto max-w-[min(18rem,calc(100vw-2rem))] flex-col items-end"
-          aria-label="Stage target and scores"
-          data-ui="game-score-panel"
-        >
-          <div className="relative pl-[5.5rem] sm:pl-[5.75rem]">
-            <div
-              className="relative ml-auto rounded-none border border-solid bg-canvas/50 py-2.5 pl-1.5 pr-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] ring-1 ring-inset ring-white/[0.06] backdrop-blur-[4px]"
-              style={{ borderColor: POLAR_HUD.border }}
-              data-ui="game-score-panel-frame"
-            >
-              <HudCornerLs />
-              <div className="relative z-[1] ml-auto w-14">
+        {isTeamMatch ? (
+          <aside
+            className="flex w-auto max-w-[min(20rem,calc(100vw-2rem))] flex-col items-end"
+            aria-label="Team match score"
+            data-ui="game-score-panel"
+          >
+            <div className="relative flex flex-col items-end">
+
+              {/* Score card */}
               <div
-                className="mb-2 w-14 border-b border-white/10 pb-2 text-center"
-                role="group"
-                aria-label={`Stage target ${currentStageThreshold.toFixed(0)}`}
+                className="relative mt-3 translate-x-6 w-[6rem] rounded-none border border-solid bg-canvas/50 px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] ring-1 ring-inset ring-white/[0.06] backdrop-blur-[4px]"
+                style={{ borderColor: POLAR_HUD.border }}
               >
-                <p className="font-montreal text-[9px] uppercase leading-tight tracking-[0.12em] text-slate-300">
-                  Stage
-                </p>
-                <p className="font-montreal text-[9px] uppercase leading-tight tracking-[0.12em] text-slate-300">
-                  Target
-                </p>
-                <p className="font-montreal text-lg font-bold leading-tight text-white">
-                  {currentStageThreshold.toFixed(0)}
-                </p>
-              </div>
+                <HudCornerLs />
+                <div className="relative z-[1]">
+                  <p className="text-center font-montreal text-[11px] uppercase tracking-[0.18em] text-slate-300">                    {boardTitle ? `${boardTitle} score` : "Team score"}
+                  </p>
 
-              {/* Floating score change — snap-in, ring burst on gains, drift + fade out */}
-              {mainScoreFloating && (
-                <div
-                  key={mainScoreFloating.id}
-                  className="pointer-events-none absolute -top-20 left-1/2 z-30 flex -translate-x-1/2 flex-col items-center"
-                >
-                  {mainScoreFloating.score > 0 && (
-                    <span
-                      className="pointer-events-none absolute left-1/2 top-1/2 h-14 w-14 rounded-none border-2 border-white/50 bg-white/15"
-                      style={{
-                        animation: "scoreBurstRing 0.85s cubic-bezier(0.22, 1, 0.36, 1) forwards",
-                      }}
-                      aria-hidden
-                    />
-                  )}
-                  <div
-                    className="relative whitespace-nowrap font-montreal text-5xl font-extrabold tracking-tight will-change-[transform,opacity] sm:text-6xl"
-                    style={{
-                      animation: `${mainScoreFloating.score > 0 ? "scoreGainPop" : "scoreLossPop"} 1.75s cubic-bezier(0.25, 0.9, 0.35, 1) forwards`,
-                      color: mainScoreFloating.score > 0 ? "#f8fafc" : "#fca5a5",
-                    }}
-                  >
-                    {mainScoreFloating.score > 0 ? "+" : ""}
-                    {mainScoreFloating.score}
-                  </div>
-                </div>
-              )}
+                  <div className="mt-3 flex flex-col gap-3">
+                    <div className="flex justify-center">
+                      <div className="relative size-20 shrink-0">
+                        <svg className="absolute inset-0 -rotate-90" viewBox="0 0 120 120">
+                          <circle
+                            cx="60"
+                            cy="60"
+                            r="48"
+                            fill="none"
+                            stroke="rgba(255,255,255,0.10)"
+                            strokeWidth="6"
+                          />
+                          <circle
+                            cx="60"
+                            cy="60"
+                            r="48"
+                            fill="none"
+                            stroke="rgba(56,189,248,0.92)"
+                            strokeWidth="8"
+                            strokeLinecap="round"
+                            strokeDasharray={`${2 * Math.PI * 48}`}
+                            strokeDashoffset={`${2 * Math.PI * 48 * (1 - teamMatchPercent / 100)}`}
+                          />
+                        </svg>
 
-              {/* Bar shell: overflow-visible wrapper so high score (right-full) is not clipped */}
-              <div className="relative flex w-14 justify-center">
-                <div className="relative h-[min(22rem,50vh)] w-14 shrink-0 overflow-visible sm:h-[min(24rem,52vh)]">
-                  {/* Bloom pulse — flashes on stage change, fades out */}
-                  <div
-                    className="pointer-events-none absolute -inset-3 z-[-1]"
-                    style={{
-                      background: `radial-gradient(ellipse at center, rgba(255,255,255,${barBloom * 0.35}) 0%, rgba(255,255,255,${barBloom * 0.12}) 40%, transparent 70%)`,
-                      filter: `blur(${12 + barBloom * 8}px)`,
-                      opacity: barBloom > 0 ? 1 : 0,
-                      transition: barBloom > 0 ? "none" : "opacity 1.5s ease-out",
-                    }}
-                    aria-hidden
-                  />
-                  <div
-                    className="absolute inset-0 overflow-hidden rounded-none border border-solid bg-white/[0.04] ring-1 ring-inset ring-white/[0.05] backdrop-blur-[4px]"
-                    style={{
-                      borderColor: barBloom > 0
-                        ? `rgba(255,255,255,${0.25 + barBloom * 0.3})`
-                        : POLAR_HUD.barBorder,
-                      boxShadow: barBloom > 0
-                        ? `inset 0 0 20px ${POLAR_HUD.barInset}, 0 0 ${16 + barBloom * 12}px rgba(255,255,255,${barBloom * 0.2})`
-                        : `inset 0 0 20px ${POLAR_HUD.barInset}`,
-                      transition: barBloom > 0 ? "none" : "border-color 1.5s ease-out, box-shadow 1.5s ease-out",
-                    }}
-                  >
-                    {/* Subtle vertical scanline texture */}
-                    <div
-                      className="absolute inset-0 opacity-[0.03]"
-                      style={{
-                        backgroundImage: "repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255,255,255,0.5) 2px, rgba(255,255,255,0.5) 3px)",
-                      }}
-                      aria-hidden
-                    />
-                    <div className="absolute inset-0 overflow-hidden rounded-none">
-                      <div
-                        className="absolute bottom-0 left-0 right-0 overflow-hidden transition-[height] duration-500 ease-out"
-                        style={{
-                          height: `${scoreBarFillPercent}%`,
-                        }}
-                      >
-                        <div
-                          className="absolute inset-0"
-                          style={{
-                            background: scoreBarGradient,
-                          }}
-                        />
-                        {/* Inner shimmer highlight */}
-                        <div
-                          className="absolute inset-y-0 left-0 w-[40%] opacity-30"
-                          style={{
-                            background: "linear-gradient(to right, rgba(255,255,255,0.15), transparent)",
-                          }}
-                          aria-hidden
-                        />
-                        {/* Bright edge line at fill top (inside overflow) */}
-                        <div
-                          className="absolute left-0 right-0 top-0 h-3"
-                          style={{
-                            background: "linear-gradient(to bottom, rgba(255,255,255,0.6), rgba(255,255,255,0.15) 40%, transparent)",
-                          }}
-                          aria-hidden
-                        />
+                        <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+                          <p className="font-montreal text-[9px] uppercase tracking-[0.14em] text-slate-400">
+                            Current
+                          </p>
+                          <p className="mt-1 font-montreal text-4xl font-bold leading-none text-white">
+                            {totalScore}
+                          </p>
+                          <p className="mt-2 font-montreal text-[11px] font-semibold text-slate-300">
+                            {Math.round(teamMatchPercent)}%
+                          </p>
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  {/* Soft glow halo at fill top edge — OUTSIDE overflow:hidden */}
-                  <div
-                    className="pointer-events-none absolute left-0 right-0 z-[2] h-0 transition-[bottom] duration-500 ease-out"
-                    style={{ bottom: `${scoreBarFillPercent}%` }}
-                    aria-hidden
-                  >
-                    <div
-                      className="absolute -left-2 -right-2 -top-4 h-8"
-                      style={{
-                        background: "radial-gradient(ellipse 120% 100% at 50% 50%, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.06) 40%, transparent 70%)",
-                        filter: "blur(4px)",
-                      }}
-                    />
-                  </div>
-
-                  {/* Zero-height anchor at high-score % so -translate-y-1/2 centers on the fill top (not the box middle). */}
-                  <div
-                    className="absolute right-full top-auto z-10 h-0 w-[5.5rem] overflow-visible transition-[bottom] duration-500 ease-out sm:w-[5.75rem]"
-                    style={{ bottom: `${highScoreBarPercent}%` }}
-                  >
-                    <div className="flex w-full -translate-y-1/2 items-center justify-end gap-0 pr-2 sm:pr-2.5">
-                      <div
-                        className="min-w-0 text-right"
-                        role="group"
-                        aria-label={`High score ${highScore.toFixed(0)}`}
-                      >
-                        <p className="font-montreal text-[9px] uppercase leading-tight tracking-[0.12em] text-slate-300">
+                      <div className="grid gap-3 border-t border-white/10 pt-3 text-center">                      <div>
+                        <p className="font-montreal text-[10px] uppercase tracking-[0.14em] text-slate-400">
                           High score
                         </p>
-                        <p className="font-montreal text-lg font-bold tabular-nums leading-tight text-white">
-                          {highScore.toFixed(0)}
+                        <p className="mt-1 font-montreal text-2xl font-bold leading-tight text-white">
+                          {highScore}
                         </p>
                       </div>
-                      <div
-                        className="ml-1.5 flex w-10 shrink-0 items-center sm:ml-2 sm:w-12"
-                        aria-hidden
-                      >
-                        <div
-                          className="h-[2px] min-w-0 flex-1"
-                          style={{
-                            background: `linear-gradient(to right, ${POLAR_HUD.connectorFrom}, ${POLAR_HUD.connectorVia}, ${POLAR_HUD.connectorTo})`,
-                          }}
-                        />
-                        <div
-                          className="size-1.5 shrink-0 border border-solid"
-                          style={{
-                            backgroundColor: POLAR_HUD.marker,
-                            borderColor: POLAR_HUD.markerRing,
-                          }}
-                        />
+
+                      <div className="w-full border-t border-white/10 pt-3 text-center">
+                        <p className="font-montreal text-[10px] uppercase tracking-[0.14em] text-slate-400">
+                          Target
+                        </p>
+                        <p className="mt-1 font-montreal text-2xl font-bold leading-tight text-white">
+                          {currentStageThreshold.toFixed(0)}
+                        </p>
                       </div>
                     </div>
                   </div>
                 </div>
               </div>
-
-              <div
-                className="mt-2 w-14 border-t border-white/10 pt-2 text-center"
-                role="group"
-                aria-label={`Current score ${totalScore.toFixed(0)}`}
+            </div>
+          </aside>
+          ) : (
+          <aside
+            className="flex w-auto max-w-[min(18rem,calc(100vw-2rem))] flex-col items-end"
+            aria-label="Stage target and scores"
+            data-ui="game-score-panel"
+          >
+            {<div className="absolute right-4 top-1/2 z-10 max-h-[calc(100vh-2rem)] -translate-y-1/2 sm:right-6">
+              <aside
+                className="flex w-auto max-w-[min(18rem,calc(100vw-2rem))] flex-col items-end"
+                aria-label="Stage target and scores"
+                data-ui="game-score-panel"
               >
-                <p className="font-montreal text-[9px] uppercase leading-tight tracking-[0.12em] text-slate-300">
-                  Current
-                </p>
-                <p className="font-montreal text-lg font-bold tabular-nums leading-tight text-white">
-                  {totalScore.toFixed(0)}
-                </p>
-              </div>
-            </div>
-            </div>
-          </div>
-        </aside>
+                <div className="relative pl-[5.5rem] sm:pl-[5.75rem]">
+                  <div
+                    className="relative ml-auto rounded-none border border-solid bg-canvas/20 py-2.5 pl-1.5 pr-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] ring-1 ring-inset ring-white/[0.06] backdrop-blur-[4px]"
+                    style={{ borderColor: POLAR_HUD.border }}
+                    data-ui="game-score-panel-frame"
+                  >
+                    <HudCornerLs />
+                    <div className="relative z-[1] ml-auto w-14">
+                    <div
+                      className="mb-2 w-14 border-b border-white/10 pb-2 text-center"
+                      role="group"
+                      aria-label={`Stage target ${currentStageThreshold.toFixed(0)}`}
+                    >
+                      <p className="font-montreal text-[9px] uppercase leading-tight tracking-[0.12em] text-slate-300">
+                        Stage
+                      </p>
+                      <p className="font-montreal text-[9px] uppercase leading-tight tracking-[0.12em] text-slate-300">
+                        Target
+                      </p>
+                      <p className="font-montreal text-lg font-bold leading-tight text-white">
+                        {currentStageThreshold.toFixed(0)}
+                      </p>
+                    </div>
+
+                    {/* Floating score change — snap-in, ring burst on gains, drift + fade out */}
+                    {mainScoreFloating && (
+                      <div
+                        key={mainScoreFloating.id}
+                        className="pointer-events-none absolute -top-20 left-1/2 z-30 flex -translate-x-1/2 flex-col items-center"
+                      >
+                        {mainScoreFloating.score > 0 && (
+                          <span
+                            className="pointer-events-none absolute left-1/2 top-1/2 h-14 w-14 rounded-none border-2 border-white/50 bg-white/15"
+                            style={{
+                              animation: "scoreBurstRing 0.85s cubic-bezier(0.22, 1, 0.36, 1) forwards",
+                            }}
+                            aria-hidden
+                          />
+                        )}
+                        <div
+                          className="relative whitespace-nowrap font-montreal text-5xl font-extrabold tracking-tight will-change-[transform,opacity] sm:text-6xl"
+                          style={{
+                            animation: `${mainScoreFloating.score > 0 ? "scoreGainPop" : "scoreLossPop"} 1.75s cubic-bezier(0.25, 0.9, 0.35, 1) forwards`,
+                            color: mainScoreFloating.score > 0 ? "#f8fafc" : "#fca5a5",
+                          }}
+                        >
+                          {mainScoreFloating.score > 0 ? "+" : ""}
+                          {mainScoreFloating.score}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Bar shell: overflow-visible wrapper so high score (right-full) is not clipped */}
+                    <div className="relative flex w-14 justify-center">
+                      <div className="relative h-[min(22rem,50vh)] w-14 shrink-0 overflow-visible sm:h-[min(24rem,52vh)]">
+                        {/* Bloom pulse — flashes on stage change, fades out */}
+                        <div
+                          className="pointer-events-none absolute -inset-3 z-[-1]"
+                          style={{
+                            background: `radial-gradient(ellipse at center, rgba(255,255,255,${barBloom * 0.35}) 0%, rgba(255,255,255,${barBloom * 0.12}) 40%, transparent 70%)`,
+                            filter: `blur(${12 + barBloom * 8}px)`,
+                            opacity: barBloom > 0 ? 1 : 0,
+                            transition: barBloom > 0 ? "none" : "opacity 1.5s ease-out",
+                          }}
+                          aria-hidden
+                        />
+                        <div
+                          className="absolute inset-0 overflow-hidden rounded-none border border-solid bg-white/[0.04] ring-1 ring-inset ring-white/[0.05] backdrop-blur-md"
+                          style={{
+                            borderColor: barBloom > 0
+                              ? `rgba(255,255,255,${0.25 + barBloom * 0.3})`
+                              : POLAR_HUD.barBorder,
+                            boxShadow: barBloom > 0
+                              ? `inset 0 0 20px ${POLAR_HUD.barInset}, 0 0 ${16 + barBloom * 12}px rgba(255,255,255,${barBloom * 0.2})`
+                              : `inset 0 0 20px ${POLAR_HUD.barInset}`,
+                            transition: barBloom > 0 ? "none" : "border-color 1.5s ease-out, box-shadow 1.5s ease-out",
+                          }}
+                        >
+                          {/* Subtle vertical scanline texture */}
+                          <div
+                            className="absolute inset-0 opacity-[0.03]"
+                            style={{
+                              backgroundImage: "repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255,255,255,0.5) 2px, rgba(255,255,255,0.5) 3px)",
+                            }}
+                            aria-hidden
+                          />
+                          <div className="absolute inset-0 overflow-hidden rounded-none">
+                            <div
+                              className="absolute bottom-0 left-0 right-0 overflow-hidden transition-[height] duration-500 ease-out"
+                              style={{
+                                height: `${scoreBarFillPercent}%`,
+                              }}
+                            >
+                              <div
+                                className="absolute inset-0"
+                                style={{
+                                  background: scoreBarGradient,
+                                }}
+                              />
+                              {/* Inner shimmer highlight */}
+                              <div
+                                className="absolute inset-y-0 left-0 w-[40%] opacity-30"
+                                style={{
+                                  background: "linear-gradient(to right, rgba(255,255,255,0.15), transparent)",
+                                }}
+                                aria-hidden
+                              />
+                              {/* Bright edge line at fill top (inside overflow) */}
+                              <div
+                                className="absolute left-0 right-0 top-0 h-3"
+                                style={{
+                                  background: "linear-gradient(to bottom, rgba(255,255,255,0.6), rgba(255,255,255,0.15) 40%, transparent)",
+                                }}
+                                aria-hidden
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Soft glow halo at fill top edge — OUTSIDE overflow:hidden */}
+                        <div
+                          className="pointer-events-none absolute left-0 right-0 z-[2] h-0 transition-[bottom] duration-500 ease-out"
+                          style={{ bottom: `${scoreBarFillPercent}%` }}
+                          aria-hidden
+                        >
+                          <div
+                            className="absolute -left-2 -right-2 -top-4 h-8"
+                            style={{
+                              background: "radial-gradient(ellipse 120% 100% at 50% 50%, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.06) 40%, transparent 70%)",
+                              filter: "blur(4px)",
+                            }}
+                          />
+                        </div>
+
+                        {/* Zero-height anchor at high-score % so -translate-y-1/2 centers on the fill top (not the box middle). */}
+                        <div
+                          className="absolute right-full top-auto z-10 h-0 w-[5.5rem] overflow-visible transition-[bottom] duration-500 ease-out sm:w-[5.75rem]"
+                          style={{ bottom: `${highScoreBarPercent}%` }}
+                        >
+                          <div className="flex w-full -translate-y-1/2 items-center justify-end gap-0 pr-2 sm:pr-2.5">
+                            <div
+                              className="min-w-0 text-right"
+                              role="group"
+                              aria-label={`High score ${highScore.toFixed(0)}`}
+                            >
+                              <p className="font-montreal text-[9px] uppercase leading-tight tracking-[0.12em] text-slate-300">
+                                High score
+                              </p>
+                              <p className="font-montreal text-lg font-bold tabular-nums leading-tight text-white">
+                                {highScore.toFixed(0)}
+                              </p>
+                            </div>
+                            <div
+                              className="ml-1.5 flex w-10 shrink-0 items-center sm:ml-2 sm:w-12"
+                              aria-hidden
+                            >
+                              <div
+                                className="h-[2px] min-w-0 flex-1"
+                                style={{
+                                  background: `linear-gradient(to right, ${POLAR_HUD.connectorFrom}, ${POLAR_HUD.connectorVia}, ${POLAR_HUD.connectorTo})`,
+                                }}
+                              />
+                              <div
+                                className="size-1.5 shrink-0 border border-solid"
+                                style={{
+                                  backgroundColor: POLAR_HUD.marker,
+                                  borderColor: POLAR_HUD.markerRing,
+                                }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div
+                      className="mt-2 w-14 border-t border-white/10 pt-2 text-center"
+                      role="group"
+                      aria-label={`Current score ${totalScore.toFixed(0)}`}
+                    >
+                      <p className="font-montreal text-[9px] uppercase leading-tight tracking-[0.12em] text-slate-300">
+                        Current
+                      </p>
+                      <p className="font-montreal text-lg font-bold tabular-nums leading-tight text-white">
+                        {totalScore.toFixed(0)}
+                      </p>
+                    </div>
+                  </div>
+                  </div>
+                </div>
+              </aside>
+            </div>}
+          </aside>
+        )}
       </div>
+      
 
       {/* Clear-board vote banner — top center, fades quickly */}
       {!isSoloMode && clearBoardBannerVisible && clearBoardInitiatorColor && (
