@@ -1738,18 +1738,21 @@ export const GameScreen = ({
                   <div className="mt-3 flex flex-col gap-3">
                     <div className="flex justify-center">
                       <div className="relative size-20 shrink-0">
-                        <svg className="absolute inset-0 -rotate-90" viewBox="0 0 120 120">
+                        <svg className="absolute inset-0" viewBox="0 0 120 120">
+                          {/* The score percent-progress circle. */}
                           <circle
                             cx="60"
-                            cy="60"
+                            cy="70"
                             r="48"
                             fill="none"
                             stroke="rgba(255,255,255,0.10)"
                             strokeWidth="6"
                           />
+
+                          {/* Creates the illusion of the precent-progress circle filling up. */}
                           <circle
                             cx="60"
-                            cy="60"
+                            cy="70"
                             r="48"
                             fill="none"
                             stroke="rgba(56,189,248,0.92)"
@@ -1764,26 +1767,27 @@ export const GameScreen = ({
                           <p className="font-montreal text-[9px] uppercase tracking-[0.14em] text-slate-400">
                             Current
                           </p>
-                          <p className="mt-1 font-montreal text-4xl font-bold leading-none text-white">
+                          <p className="translate-y-3 mt-2 font-montreal text-4xl font-bold leading-none text-white">
                             {totalScore}
                           </p>
-                          <p className="mt-2 font-montreal text-[11px] font-semibold text-slate-300">
+                          <p className="mt-4 font-montreal text-[11px] font-semibold text-slate-300">
                             {Math.round(teamMatchPercent)}%
                           </p>
                         </div>
                       </div>
                     </div>
 
-                      <div className="grid gap-3 border-t border-white/10 pt-3 text-center">                      <div>
+                    <div className="grid gap-3 border-t border-white/10 pt-3 text-center">
+                      <div>
                         <p className="font-montreal text-[10px] uppercase tracking-[0.14em] text-slate-400">
                           High score
                         </p>
                         <p className="mt-1 font-montreal text-2xl font-bold leading-tight text-white">
                           {highScore}
                         </p>
-                      </div>
+                    </div>
 
-                      <div className="w-full border-t border-white/10 pt-3 text-center">
+                     <div className="w-full border-t border-white/10 pt-3 text-center">
                         <p className="font-montreal text-[10px] uppercase tracking-[0.14em] text-slate-400">
                           Target
                         </p>
