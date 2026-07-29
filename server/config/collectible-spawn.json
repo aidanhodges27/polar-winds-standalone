@@ -1,20 +1,14 @@
 {
-  "seed": 40,
+  "seed": null,
   "custom_target_scores": [
-    50, 130, 290, 520, 860, 1090, 1550
+    50, 120, 280, 520, 850, 1050, 1500
   ],
   "collectible_spawn_rules": [
     {
       "clue_type": "network",
       "first_stage": 1,
       "num_initial": 5,
-      "num_subsequent": 3
-    },
-    {
-      "clue_type": "polyomino",
-      "first_stage": 3,
-      "num_initial": 7,
       "num_subsequent": 4
-  }
-]
+    }
+  ]
 }
