@@ -10,6 +10,7 @@ import { useSounds } from "@/hooks/use-sounds";
 import { PlatformVoiceOverlay } from "@/components/game/PlatformVoiceOverlay";
 import { ResultsOverlay } from "@/components/game/ResultsOverlay";
 import { MilestoneShowcase } from "@/components/game/MilestoneShowcase";
+import { TeamMatchLayout } from "@/components/game/TeamMatchLayout";
 import { symbolKeyFromName, milestoneAssets, type MilestoneSymbol } from "@/lib/svg3d/assets";
 import { PLAYER_COLOR_IDS, type PlayerColorId } from "@/constants/playerColors";
 
@@ -729,6 +730,10 @@ const Index = () => {
   const winningTeamState = linkedSession && winningTeam && linkedSession.playerTeamId !== winningTeam
     ? opponentGameState
     : gameState;
+  const teamAState = linkedSession?.playerTeamId === "A" ? gameState : opponentGameState;
+  const teamBState = linkedSession?.playerTeamId === "B" ? gameState : opponentGameState;
+  const teamARoom = linkedSession?.playerTeamId === "A" ? room : opponentRoom;
+  const teamBRoom = linkedSession?.playerTeamId === "B" ? room : opponentRoom;
   
   /*
    * A linked match keeps our team and the opposing team in two separate game
@@ -788,7 +793,7 @@ const Index = () => {
       isGameOver={boardState.isGameOver}
       countdown={boardState.countdown}
       challengeName={initPayload?.challengeName}
-      layout="panel"
+      layout="board"
       boardTitle={boardTitle}
       boardSubtitle={boardSubtitle}
       teamMatchCode={linkedSession?.sessionId}
@@ -803,26 +808,52 @@ const Index = () => {
   return (
     <div className="relative min-h-dvh w-full bg-canvas text-foreground">
       {linkedSession ? (
-        <div className="grid h-dvh w-full grid-cols-1 gap-px bg-sky-950/40 lg:grid-cols-2">
-          <section className="relative min-h-[50dvh] min-w-0 overflow-hidden bg-canvas lg:min-h-dvh">
-            {renderBoard(
-              linkedSession.playerTeamId === "A" ? room : opponentRoom,
-              linkedSession.playerTeamId === "A" ? gameState : opponentGameState,
+        <TeamMatchLayout
+          challengeName={initPayload.challengeName}
+          stage={Math.max(gameState.stage, opponentGameState.stage)}
+          timeRemaining={Math.min(gameState.timeRemaining, opponentGameState.timeRemaining)}
+          teamA={{
+            id: "A",
+            title: "Team A",
+            colors: ["#ff9d0a", "#f4f6f8", "#2799ee"],
+            colorLabel: "Team A Pieces",
+            score: teamAState.totalScore,
+            highScore: teamAHighScore,
+            target: teamAState.stageThresholds[teamAState.stage - 1] ?? 100,
+            gridWidth: teamAState.gridWidth,
+            gridHeight: teamAState.gridHeight,
+            board: renderBoard(
+              teamARoom,
+              teamAState,
               "Team A",
               "Orange / White / Blue",
               linkedSession.playerTeamId !== "A",
-            )}
-          </section>
-          <section className="relative min-h-[50dvh] min-w-0 overflow-hidden bg-canvas lg:min-h-dvh">
-            {renderBoard(
-              linkedSession.playerTeamId === "B" ? room : opponentRoom,
-              linkedSession.playerTeamId === "B" ? gameState : opponentGameState,
+            ),
+          }}
+          teamB={{
+            id: "B",
+            title: "Team B",
+            colors: ["#9747ff", "#ffdf35", "#43d64b"],
+            colorLabel: "Team B Pieces",
+            score: teamBState.totalScore,
+            highScore: teamBHighScore,
+            target: teamBState.stageThresholds[teamBState.stage - 1] ?? 100,
+            gridWidth: teamBState.gridWidth,
+            gridHeight: teamBState.gridHeight,
+            board: renderBoard(
+              teamBRoom,
+              teamBState,
               "Team B",
               "Yellow / Purple / Cyan",
               linkedSession.playerTeamId !== "B",
-            )}
-          </section>
-        </div>
+            ),
+          }}
+          onSwitchBoard={() =>
+            window.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab" }))
+          }
+          onClearBoard={() => room?.send("clearBoard", {})}
+          onAbandonGame={() => room?.send("abandonGame", {})}
+        />
       ) : (
         <GameScreen
           room={room}
