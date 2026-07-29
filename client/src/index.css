@@ -128,6 +128,24 @@ All colors MUST be HSL.
   }
 }
 
+/* The linked-match shell owns the HUD; embedded GameScreen instances render only their live boards. */
+.team-match-board [data-ui="game-hud-panel"],
+.team-match-board [data-ui="game-stage-chip"],
+.team-match-board [data-ui="game-score-panel"],
+.team-match-board [data-ui="game-timer-chip"],
+.team-match-board [data-ui="game-action-clear"],
+.team-match-board [data-ui="game-action-abandon"],
+.team-match-board [data-ui="game-board-title"],
+.team-match-board [data-ui="game-spectator-badge"] {
+  display: none !important;
+}
+
+@media (max-width: 1023px) {
+  .team-match-ui {
+    min-height: 100dvh;
+  }
+}
+
 @layer base {
   * {
     @apply border-border;
