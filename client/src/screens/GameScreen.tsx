@@ -434,7 +434,7 @@ interface GameScreenProps {
   onGameAbandoned?: () => void;
   challengeName?: string;
   // Panel layout is used by linked sessions where two GameRooms share one screen.
-  layout?: "full" | "panel";
+  layout?: "full" | "panel" | "board";
   // Short board label shown when two boards are displayed together.
   boardTitle?: string;
   // Color/team hint shown under the board label in linked-session mode.
@@ -1315,7 +1315,11 @@ export const GameScreen = ({
   return (
     <div className={cn(
       "isolate w-full relative overflow-hidden bg-canvas",
-      layout === "panel" ? "h-full min-h-[50dvh]" : "h-screen",
+      layout === "panel"
+        ? "h-full min-h-[50dvh]"
+        : layout === "board"
+          ? "team-match-board h-full min-h-0"
+          : "h-screen",
     )}>
       {/* Cloud nebula backdrop is rendered inside the R3F Canvas (NebulaBackdrop). */}
       <div
@@ -1408,7 +1412,7 @@ export const GameScreen = ({
           The board subtitle shows the colors of the team (e.g. orange/white/blue).
           If you are spectating a board, an additional line will appear that indicates you are a watcher. */}
       {boardTitle && (
-        <div className="pointer-events-none absolute right-4 top-4 z-20 max-w-[min(13rem,calc(50vw-2rem))] rounded-none border border-solid bg-canvas/55 px-3 py-2 text-right shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] ring-1 ring-inset ring-white/[0.06] backdrop-blur-[4px]" style={{ borderColor: POLAR_HUD.border }}>
+        <div data-ui="game-board-title" className="pointer-events-none absolute right-4 top-4 z-20 max-w-[min(13rem,calc(50vw-2rem))] rounded-none border border-solid bg-canvas/55 px-3 py-2 text-right shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] ring-1 ring-inset ring-white/[0.06] backdrop-blur-[4px]" style={{ borderColor: POLAR_HUD.border }}>
           <HudCornerLs />
           <div className="relative z-[1]">
             <p className="font-montreal text-[10px] font-semibold uppercase leading-tight tracking-[0.16em] text-white">{boardTitle}</p>
@@ -2312,7 +2316,7 @@ export const GameScreen = ({
 
       {/* Spectator Badge */}
       {isSpectator && (
-        <div className="absolute left-1/2 top-4 z-50 -translate-x-1/2 rounded-none border border-hairline/40 bg-canvas/45 px-4 py-2 font-montreal text-[11px] uppercase tracking-wider text-slate-400 backdrop-blur-[6px]">
+        <div data-ui="game-spectator-badge" className="absolute left-1/2 top-4 z-50 -translate-x-1/2 rounded-none border border-hairline/40 bg-canvas/45 px-4 py-2 font-montreal text-[11px] uppercase tracking-wider text-slate-400 backdrop-blur-[6px]">
           Spectating
         </div>
       )}
